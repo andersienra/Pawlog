@@ -648,6 +648,9 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
 .auth-msg.ok { background: var(--accent-soft); color: var(--accent); }
 .auth-head h1 { font-size: 34px; }
 .welcome p b { overflow-wrap: anywhere; }
+.beh-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.beh-tools .btn { flex: 1 1 auto; }
+.chip.pick span[aria-hidden] { font-size: 17px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
@@ -766,8 +769,21 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     ['Anxiety', '😟', 'Relaxed', 'Very anxious', false],
     ['Appetite', '🍖', "Wouldn't eat", 'Ate everything', true],
     ['Sociability', '🐕', 'Kept to self', 'Super friendly', true],
-    ['Potty accidents', '💧', 'None', 'Many', false],
     ['Overall mood', '😊', 'Rough day', 'Best day ever', true]
+  ];
+  // Offered in the "What do you want to track?" picker, off by default.
+  const SUGGESTED_BEHAVIORS = [
+    ['Barking', '🗣️', 'Quiet', 'Nonstop', false],
+    ['Separation anxiety', '🚪', 'Settled alone', 'Very distressed', false],
+    ['Recall', '📣', 'Ignored me', 'Came right away', true],
+    ['Crate comfort', '🏠', 'Fought it', 'Happy in crate', true],
+    ['Play with other dogs', '🎾', 'Avoided them', 'Played great', true],
+    ['Chewing', '🦴', 'None', 'Destroyed things', false],
+    ['Jumping on people', '🦘', 'Four on the floor', 'Jumped a lot', false],
+    ['Begging', '🍽️', 'Left us alone', 'Begged constantly', false],
+    ['Grooming tolerance', '🛁', 'Hated it', 'Totally relaxed', true],
+    ['Car rides', '🚗', 'Stressed', 'Chill passenger', true],
+    ['Potty accidents', '💧', 'None', 'Many', false]
   ];
   const DEFAULT_TAGS = ['Great walk', 'Zoomies', 'Barked at mailman', 'Ate something bad', 'Vet visit', 'Met a new dog', 'Training session', 'Bath day', 'Chewed something', 'Slept a lot'];
   const EVENT_TYPES = {
@@ -2057,10 +2073,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     const dog = Object.assign({ id: id, createdAt: Date.now(), createdBy: S.me || null, avatarAssetId: formAvatar || null, microchip: '', vet: { name: '', phone: '' }, notes: '' }, d);
     if (!canWrite()) return null;
     Store.put('dogs', id, dog);
-    DEFAULT_BEHAVIORS.forEach((b, i) => {
-      const bid = genId('b');
-      Store.put('behaviors', bid, { id: bid, dogId: id, name: b[0], emoji: b[1], lowLabel: b[2], highLabel: b[3], higherIsBetter: b[4], order: i, archived: false });
-    });
+    // Behaviors are chosen in the "What do you want to track?" step that follows.
     setActiveDog(id);
     formAvatar = null;
     return id;
@@ -2131,11 +2144,13 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     // Behaviors
     h += '<section><div class="group-label"><span>How was ' + esc(dog.name) + '?</span><span class="aside">1–10</span></div><div class="panel rows">';
     if (!bs.length) {
-      h += '<div class="empty"><h3>No behaviors to rate</h3><p>Add the things you want to track in Settings.</p><button class="btn soft sm" data-action="tab" data-view="prefs">Open Settings</button></div>';
+      h += '<div class="empty"><h3>Nothing to rate yet</h3><p>Pick what you want to track for ' + esc(dog.name) + ': energy, recall, barking, anything.</p><button class="btn sm" data-action="track-picker">Choose behaviors</button></div>';
     }
     const rs = ratingsOf(e);
     for (const b of bs) h += behaviorCard(b, rs[b.id]);
-    h += '</div></section>';
+    h += '</div>';
+    if (bs.length && !S.readOnly) h += '<div class="beh-tools"><button class="btn soft sm" data-action="manage-behaviors">' + I.edit + 'Edit behaviors</button><button class="btn ghost sm" data-action="add-behavior">' + I.plus + 'Add behavior</button></div>';
+    h += '</section>';
 
     // Tags
     const qt = settings().quickTags || [];
@@ -2720,17 +2735,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
       '<button class="icon-btn" data-action="edit-dog" data-id="' + esc(d.id) + '" aria-label="Edit ' + esc(d.name) + '">' + I.edit + '</button></div>').join('') +
       '<button class="row" data-action="add-dog" style="color:var(--accent);font-weight:600">' + I.plus.replace('<svg', '<svg style="width:22px;height:22px"') + 'Add a dog</button></div></section>';
 
-    h += '<section><div class="group-label"><span>Behaviors for ' + esc(dog.name) + '</span><span class="aside">tap to edit</span></div><div class="panel rows">';
-    active.forEach((b, i) => {
-      h += '<div class="bm"><button class="main" data-action="edit-behavior" data-id="' + esc(b.id) + '"><span class="e" aria-hidden="true">' + esc(b.emoji) + '</span><span class="grow"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div><div class="small muted">' + (b.higherIsBetter ? 'Higher is better' : 'Lower is better') + '</div></span></button>' +
-        '<button class="icon-btn" data-action="move-behavior" data-id="' + esc(b.id) + '" data-d="-1" aria-label="Move ' + esc(b.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>' + I.up + '</button>' +
-        '<button class="icon-btn" data-action="move-behavior" data-id="' + esc(b.id) + '" data-d="1" aria-label="Move ' + esc(b.name) + ' down"' + (i === active.length - 1 ? ' disabled' : '') + '>' + I.down + '</button></div>';
-    });
-    h += '<button class="row" data-action="add-behavior" style="color:var(--accent);font-weight:600">' + I.plus.replace('<svg', '<svg style="width:22px;height:22px"') + 'Add behavior</button></div>';
-    if (archived.length) {
-      h += '<div class="group-label" style="margin-top:14px"><span>Archived</span><span class="aside">hidden from Today, history kept</span></div><div class="panel rows">' + archived.map((b) =>
-        '<div class="bm"><button class="main" data-action="edit-behavior" data-id="' + esc(b.id) + '"><span class="e" aria-hidden="true" style="opacity:.5">' + esc(b.emoji) + '</span><span class="grow muted">' + esc(b.name) + '</span></button><button class="btn sm soft" data-action="unarchive-behavior" data-id="' + esc(b.id) + '">Restore</button></div>').join('') + '</div>';
-    }
+    h += '<section id="behaviorsSection"><div class="group-label"><span>Behaviors for ' + esc(dog.name) + '</span><span class="aside">tap to edit</span></div>' + behaviorManagerHtml(dog);
     h += '</section>';
 
     h += '<section><div class="group-label"><span>Quick tags</span></div><div class="panel pad"><div class="chips">' + (s.quickTags || []).map((tg, i) =>
@@ -2754,6 +2759,84 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     h += '<p class="foot">Pawlog · ' + plural(dogs.length, 'dog') + ' · ' + plural(counts, 'day') + ' logged</p></div>';
     return h;
   }
+  // Behavior list with edit / reorder / archive, shared by Settings and the sheet opened from Today.
+  function behaviorManagerHtml(dog) {
+    const bsAll = dogBehaviors(dog.id, true);
+    const active = bsAll.filter((b) => !b.archived), archived = bsAll.filter((b) => b.archived);
+    let h = '<div class="panel rows">';
+    active.forEach((b, i) => {
+      h += '<div class="bm"><button class="main" data-action="edit-behavior" data-id="' + esc(b.id) + '"><span class="e" aria-hidden="true">' + esc(b.emoji) + '</span><span class="grow"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div><div class="small muted">' + (b.higherIsBetter ? 'Higher is better' : 'Lower is better') + '</div></span></button>' +
+        '<button class="icon-btn" data-action="move-behavior" data-id="' + esc(b.id) + '" data-d="-1" aria-label="Move ' + esc(b.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>' + I.up + '</button>' +
+        '<button class="icon-btn" data-action="move-behavior" data-id="' + esc(b.id) + '" data-d="1" aria-label="Move ' + esc(b.name) + ' down"' + (i === active.length - 1 ? ' disabled' : '') + '>' + I.down + '</button></div>';
+    });
+    if (!active.length) h += '<p class="small muted" style="margin:0;padding:14px 16px">Nothing on the Today screen yet.</p>';
+    h += '<button class="row" data-action="add-behavior" style="color:var(--accent);font-weight:600">' + I.plus.replace('<svg', '<svg style="width:22px;height:22px"') + 'Add behavior</button>' +
+      '<button class="row" data-action="track-picker" style="color:var(--accent);font-weight:600">' + I.check.replace('<svg', '<svg style="width:22px;height:22px"') + 'Pick from suggestions</button></div>';
+    if (archived.length) {
+      h += '<div class="group-label" style="margin-top:14px"><span>Archived</span><span class="aside">hidden from Today, history kept</span></div><div class="panel rows">' + archived.map((b) =>
+        '<div class="bm"><button class="main" data-action="edit-behavior" data-id="' + esc(b.id) + '"><span class="e" aria-hidden="true" style="opacity:.5">' + esc(b.emoji) + '</span><span class="grow muted">' + esc(b.name) + '</span></button><button class="btn sm soft" data-action="unarchive-behavior" data-id="' + esc(b.id) + '">Restore</button></div>').join('') + '</div>';
+    }
+    return h;
+  }
+  // Re-draw whichever behavior list is showing (Settings page or the manager sheet) after a change.
+  function refreshBehaviorViews() {
+    const m = $('#behMgr');
+    if (m) { const dog = curDog(); if (dog) m.innerHTML = behaviorManagerHtml(dog); }
+    if (!$('#sheetRoot').hidden && !m) return;
+    scheduleRender({});
+  }
+  let behaviorSheetFromMgr = false;
+  function openBehaviorManager() {
+    const dog = curDog(); if (!dog) return;
+    openSheet('Behaviors for ' + dog.name, '<p class="small muted" style="margin:0 2px 12px">These are the sliders on the Today screen. Tap one to rename it or change its labels. Archive keeps past ratings.</p><div id="behMgr">' + behaviorManagerHtml(dog) + '</div>', null, () => { scheduleRender({}); });
+  }
+
+  // "What do you want to track?" — defaults + suggestions as toggleable chips, plus custom names.
+  let TP = null;
+  function openTrackPicker(dogId, onboarding) {
+    const dog = S.dogs[dogId]; if (!dog) return;
+    const have = dogBehaviors(dogId, true);
+    const haveNames = have.map((b) => b.name.toLowerCase());
+    const pool = DEFAULT_BEHAVIORS.concat(SUGGESTED_BEHAVIORS).filter((b) => haveNames.indexOf(b[0].toLowerCase()) < 0);
+    const sel = {};
+    pool.forEach((b) => { sel[b[0]] = onboarding && DEFAULT_BEHAVIORS.some((d) => d[0] === b[0]); });
+    TP = { dogId: dogId, onboarding: !!onboarding, pool: pool, sel: sel, custom: [] };
+    drawTrackPicker();
+  }
+  function trackChips() {
+    const chips = TP.pool.map((b) => '<button type="button" class="chip pick" data-action="tp-toggle" data-name="' + esc(b[0]) + '" aria-pressed="' + !!TP.sel[b[0]] + '"><span aria-hidden="true">' + esc(b[1]) + '</span>' + esc(b[0]) + '</button>');
+    TP.custom.forEach((n, i) => chips.push('<button type="button" class="chip pick" data-action="tp-rm-custom" data-i="' + i + '" aria-pressed="true" aria-label="Remove ' + esc(n) + '"><span aria-hidden="true">🐾</span>' + esc(n) + I.x.replace('<svg', '<svg style="width:14px;height:14px"') + '</button>'));
+    return chips.join('');
+  }
+  function tpCount() { return Object.keys(TP.sel).filter((k) => TP.sel[k]).length + TP.custom.length; }
+  function drawTrackPicker() {
+    const dog = S.dogs[TP.dogId];
+    const n = tpCount();
+    const body = '<p class="small muted" style="margin:0 2px 14px">Each one becomes a 1–10 slider on the Today screen. You can rename, reorder or add more any time.</p>' +
+      '<div class="chips" id="tpChips">' + trackChips() + '</div>' +
+      '<form class="tag-input" data-form="tp-custom" style="margin-top:14px"><input class="input" id="tpNew" name="name" maxlength="40" placeholder="Something else? e.g. Counter surfing" autocomplete="off" enterkeyhint="done"><button class="btn sm" type="submit">Add</button></form>' +
+      '<button class="btn block" style="margin-top:18px" data-action="tp-done" id="tpDone">' + (n ? 'Track ' + plural(n, 'behavior') : (TP.onboarding ? 'Skip for now' : 'Done')) + '</button>';
+    const title = TP.onboarding ? 'What do you want to track for ' + dog.name + '?' : 'Add behaviors for ' + dog.name;
+    if (!$('#sheetRoot').hidden && $('#tpChips')) { $('#tpChips').innerHTML = trackChips(); $('#tpDone').textContent = n ? 'Track ' + plural(n, 'behavior') : (TP.onboarding ? 'Skip for now' : 'Done'); return; }
+    // Closing the sheet any way (Done, ✕, tapping outside) finishes the step; only Done saves the picks.
+    openSheet(title, body, null, () => { if (TP) finishTrackPicker(TP.save === true); });
+  }
+  function finishTrackPicker(save) {
+    const tp = TP; TP = null;
+    if (!tp) return;
+    const dog = S.dogs[tp.dogId];
+    if (save !== false) {
+      let order = Math.max(-1, ...dogBehaviors(tp.dogId, true).map((x) => x.order || 0)) + 1;
+      const all = DEFAULT_BEHAVIORS.concat(SUGGESTED_BEHAVIORS);
+      const picked = all.filter((b) => tp.sel[b[0]]).map((b) => ({ name: b[0], emoji: b[1], lowLabel: b[2], highLabel: b[3], higherIsBetter: b[4] }))
+        .concat(tp.custom.map((n) => ({ name: n, emoji: '🐾', lowLabel: 'Low', highLabel: 'High', higherIsBetter: true })));
+      picked.forEach((b) => { const bid = genId('b'); Store.put('behaviors', bid, Object.assign({ id: bid, dogId: tp.dogId, order: order++, archived: false }, b)); });
+      if (picked.length && !tp.onboarding) toast(plural(picked.length, 'behavior') + ' added');
+    }
+    if (tp.onboarding && dog) { toast('Welcome, ' + dog.name + '!'); go('today', { top: true }); }
+    else refreshBehaviorViews();
+  }
+
   function openBehaviorSheet(bid) {
     const b = bid ? S.behaviors[bid] : null;
     const body = '<form class="form" data-form="behavior" data-id="' + esc(bid || '') + '" autocomplete="off">' +
@@ -2765,7 +2848,13 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
       '<button class="btn block" type="submit">' + (b ? 'Save' : 'Add behavior') + '</button>' +
       (b ? '<button class="btn block soft" type="button" data-action="' + (b.archived ? 'unarchive-behavior' : 'archive-behavior') + '" data-id="' + esc(bid) + '">' + I.archive + (b.archived ? 'Restore to Today' : 'Archive (keep history)') + '</button>' +
         '<button class="btn block danger" type="button" data-action="delete-behavior" data-id="' + esc(bid) + '">' + I.trash + 'Delete behavior</button>' : '') + '</form>';
+    behaviorSheetFromMgr = !!$('#behMgr');
     openSheet(b ? 'Edit behavior' : 'New behavior', body);
+  }
+  function afterBehaviorSheet() {
+    closeSheet();
+    if (behaviorSheetFromMgr) { behaviorSheetFromMgr = false; setTimeout(openBehaviorManager, 300); }
+    else render();
   }
   function openDogSwitcher() {
     const dog = curDog();
@@ -3019,24 +3108,30 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
       if (i < 0 || j < 0 || j >= list.length) return;
       const tmp = list[i]; list[i] = list[j]; list[j] = tmp;
       list.forEach((b, k) => { if (b.order !== k) Store.put('behaviors', b.id, Object.assign({}, b, { order: k })); });
-      render();
+      if ($('#behMgr')) { refreshBehaviorViews(); const btn = $('#behMgr [data-action="move-behavior"][data-id="' + el.dataset.id + '"][data-d="' + el.dataset.d + '"]'); if (btn && !btn.disabled) btn.focus(); }
+      else render();
     },
-    'archive-behavior': (el) => { const b = S.behaviors[el.dataset.id]; if (!b) return; Store.put('behaviors', b.id, Object.assign({}, b, { archived: true })); closeSheet(); toast(b.name + ' archived'); render(); },
-    'unarchive-behavior': (el) => { const b = S.behaviors[el.dataset.id]; if (!b) return; const max = Math.max(-1, ...dogBehaviors(b.dogId).map((x) => x.order || 0)); Store.put('behaviors', b.id, Object.assign({}, b, { archived: false, order: max + 1 })); closeSheet(); render(); },
+    'archive-behavior': (el) => { const b = S.behaviors[el.dataset.id]; if (!b) return; Store.put('behaviors', b.id, Object.assign({}, b, { archived: true })); toast(b.name + ' archived'); if ($('#behMgr')) refreshBehaviorViews(); else afterBehaviorSheet(); },
+    'unarchive-behavior': (el) => { const b = S.behaviors[el.dataset.id]; if (!b) return; const max = Math.max(-1, ...dogBehaviors(b.dogId).map((x) => x.order || 0)); Store.put('behaviors', b.id, Object.assign({}, b, { archived: false, order: max + 1 })); if ($('#behMgr')) refreshBehaviorViews(); else afterBehaviorSheet(); },
     'delete-behavior': async (el) => {
       const b = S.behaviors[el.dataset.id]; if (!b) return;
       const c = await confirmDialog({ title: 'Delete ' + b.name + '?', body: 'Past ratings for it will no longer appear in charts. Archive it instead to keep its history.', ok: 'Delete', danger: true, alt: 'Archive instead' });
       if (c === 2) { A['archive-behavior'](el); return; }
       if (c !== 1) return;
-      Store.del('behaviors', b.id); closeSheet(); render();
+      Store.del('behaviors', b.id); afterBehaviorSheet(); toast(b.name + ' deleted');
     },
+    'manage-behaviors': () => openBehaviorManager(),
+    'track-picker': () => { const dog = curDog(); if (!dog) return; const fromSheet = !$('#sheetRoot').hidden; closeSheet(); setTimeout(() => openTrackPicker(dog.id, false), fromSheet ? 300 : 0); },
+    'tp-toggle': (el) => { if (!TP) return; const n = el.dataset.name; TP.sel[n] = !TP.sel[n]; drawTrackPicker(); const b = $('#tpChips [data-name="' + CSS.escape(n) + '"]'); if (b) b.focus(); },
+    'tp-rm-custom': (el) => { if (!TP) return; TP.custom.splice(Number(el.dataset.i), 1); drawTrackPicker(); },
+    'tp-done': () => { if (!TP) return; TP.save = true; closeSheet(); },
     'rm-quicktag': (el) => { const q = settings().quickTags; q.splice(Number(el.dataset.i), 1); saveQuickTags(q); render(); },
     'theme': (el) => { setPref('theme', el.dataset.t); applyTheme(el.dataset.t); render(); },
     'export-json': async () => { flushPending(); toast('Preparing backup…'); const o = await exportObj(); saveFile('pawlog-backup-' + todayStr() + '.json', JSON.stringify(o), 'application/json'); },
     'export-csv': () => { flushPending(); saveFile('pawlog-logs-' + todayStr() + '.csv', exportCsv(), 'text/csv'); }
   };
 
-  const WRITE_ACTIONS = ['add-dog', 'edit-dog', 'delete-dog', 'clear-rating', 'toggle-tag', 'add-tag', 'meals', 'rm-photo', 'clear-day', 'set-size', 'add-event', 'edit-event', 'delete-event', 'edit-behavior', 'add-behavior', 'move-behavior', 'archive-behavior', 'unarchive-behavior', 'delete-behavior', 'rm-quicktag'];
+  const WRITE_ACTIONS = ['add-dog', 'edit-dog', 'delete-dog', 'clear-rating', 'toggle-tag', 'add-tag', 'meals', 'rm-photo', 'clear-day', 'set-size', 'add-event', 'edit-event', 'delete-event', 'edit-behavior', 'add-behavior', 'move-behavior', 'manage-behaviors', 'track-picker', 'archive-behavior', 'unarchive-behavior', 'delete-behavior', 'rm-quicktag'];
   document.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-pick]');
     if (pick && S.readOnly) { e.preventDefault(); canWrite(); return; }
@@ -3164,11 +3259,10 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
       const d = readDogForm(f);
       if (!d.name) { toast('Give your dog a name first.', true); $('#f_name', f).focus(); return; }
       flushPending();
-      createDog(d);
+      const newId = createDog(d);
       closeSheet();
       S.date = todayStr();
-      toast('Welcome, ' + d.name + '!');
-      go('today', { top: true });
+      if (newId) openTrackPicker(newId, true);
     } else if (kind === 'dog-edit') {
       const base = S.dogs[f.dataset.id]; if (!base) return;
       const d = readDogForm(f, base);
@@ -3205,7 +3299,14 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
         higherIsBetter: fd.get('higherIsBetter') === 'on'
       });
       Store.put('behaviors', id, b);
-      closeSheet(); render(); toast(prev ? 'Saved' : name + ' added');
+      afterBehaviorSheet(); toast(prev ? 'Saved' : name + ' added');
+    } else if (kind === 'tp-custom') {
+      const v = String(new FormData(f).get('name') || '').trim().replace(/\s+/g, ' ');
+      if (!v || !TP) return;
+      const exists = TP.pool.find((b) => b[0].toLowerCase() === v.toLowerCase());
+      if (exists) TP.sel[exists[0]] = true;
+      else if (TP.custom.map((x) => x.toLowerCase()).indexOf(v.toLowerCase()) < 0) TP.custom.push(v);
+      f.reset(); drawTrackPicker(); const i = $('#tpNew'); if (i) i.focus();
     } else if (kind === 'tag-new' || kind === 'quicktag') {
       const v = String(new FormData(f).get('tag') || '').trim().replace(/\s+/g, ' ');
       if (!v) return;
