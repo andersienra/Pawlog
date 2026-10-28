@@ -678,7 +678,14 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
          projectId: "your-project", appId: "…"
        };
      ========================================================= */
-  const FIREBASE_CONFIG = null;
+  const FIREBASE_CONFIG = {
+    apiKey: 'AIzaSyC1xocvFWvgizH47JSVbpEOOL1HgFtThOU',
+    authDomain: 'pawlog-9e959.firebaseapp.com',
+    projectId: 'pawlog-9e959',
+    storageBucket: 'pawlog-9e959.firebasestorage.app',
+    messagingSenderId: '428529004088',
+    appId: '1:428529004088:web:8178bcea34bfbe230740cd'
+  };
   const FIREBASE_SDK_VERSION = '10.14.1';
 
   /* =========================================================
@@ -1633,7 +1640,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
   async function submitAuth(form) {
     const A2 = FB.m.auth;
     const fd = new FormData(form);
-    const email = String(fd.get('email') || '').trim();
+    const email = String(fd.get('email') || '').trim().toLowerCase();
     const pw = String(fd.get('password') || '');
     const name = String(fd.get('name') || '').trim();
     AUTH.email = email; AUTH.name = name;
