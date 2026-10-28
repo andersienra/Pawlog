@@ -70,7 +70,7 @@
 
 /* Section headings */
 .dog-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 4px 10px; min-height: 44px; }
-.dog-h h2 { font-family: var(--font-display); font-weight: 800; font-size: 21px; letter-spacing: -.01em; margin: 0; }
+.dog-h h2 { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: -.01em; margin: 0; }
 .dog-h h3 { font-family: var(--font-display); font-weight: 700; font-size: 17px; margin: 0; }
 .dog-h .aside { font-size: 14px; color: var(--ink-3); font-weight: 600; }
 .dog-h.sub-h { margin-top: 14px; margin-bottom: 6px; }
@@ -85,7 +85,7 @@
 .dcard.dashed { border-style: dashed; }
 .dcard.rows > * + * { border-top: 1.5px solid var(--line); }
 .notecard { padding: 14px 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.dcard .row .t.add-t { color: var(--accent); display: flex; align-items: center; gap: 6px; }
+.dcard .row .t.add-t { color: var(--accent-text); display: flex; align-items: center; gap: 6px; }
 .dcard .row .t.add-t svg { width: 18px; height: 18px; flex: none; }
 
 /* Gotcha kv */
@@ -113,13 +113,14 @@
   flex: none; display: inline-block; padding: 6px 10px; border-radius: 12px; font-size: 13px; font-weight: 800; white-space: nowrap;
   background: var(--surface-2); color: var(--ink);
 }
-.due.soon { background: var(--accent); color: var(--accent-ink); }
-.due.over { background: var(--bad); color: var(--accent-ink); outline: 2px solid var(--border, var(--ink)); }
+.due.soon { background: var(--accent-fill); color: var(--accent-ink); }
+.due.over { background: var(--accent-fill); color: var(--accent-ink); outline: 2px solid var(--border, var(--ink)); }
 
 /* Timeline rows */
 .ev { display: flex; gap: 12px; align-items: center; padding: 12px 14px; width: 100%; text-align: left; min-height: 60px; }
 .ev:active { background: var(--surface-2); }
-.ev .ic { width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); display: grid; place-items: center; font-size: 20px; flex: none; }
+.ev .ic { width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); color: var(--ink); border: 2px solid var(--border); display: grid; place-items: center; flex: none; }
+.ev .ic svg { width: 20px; height: 20px; }
 .ev .grow { flex: 1; min-width: 0; }
 .ev .t { font-weight: 700; overflow-wrap: anywhere; }
 .ev .s { font-size: 13px; color: var(--ink-2); }
@@ -140,6 +141,7 @@
 .evtypes label { position: relative; }
 .evtypes input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
 .evtypes .chip { border: 2px solid var(--border, var(--ink)); font-weight: 700; }
+.evtypes .chip svg { width: 16px; height: 16px; flex: none; }
 .evtypes input:checked + .chip { background: var(--ink); color: var(--bg); }
 .evtypes input:focus-visible + .chip { outline: 3px solid color-mix(in oklab, var(--accent) 55%, transparent); outline-offset: 2px; }
 

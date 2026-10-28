@@ -403,7 +403,7 @@ textarea.input { resize: none; min-height: 110px; line-height: 1.45; }
   min-height: 44px; padding: 4px 6px; border-radius: 999px; font-size: 15px; font-weight: 700; color: var(--ink-3);
   transition: background .15s, color .15s;
 }
-.seg span small { font-size: 11px; font-weight: 600; color: inherit; opacity: .85; }
+.seg span small { font-size: 11px; font-weight: 600; color: inherit; }
 .seg input:checked + span, .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); font-weight: 800; }
 .seg input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 1px; }
 

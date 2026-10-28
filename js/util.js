@@ -82,16 +82,29 @@ export const DEFAULT_BEHAVIORS = [
 // Per-behavior colour, cycling through the six --b1..--b6 tokens by behavior order (index 0 -> --b1).
 export const behaviorColor = (index) => 'var(--b' + ((((Number(index) || 0) % 6) + 6) % 6 + 1) + ')';
 export const DEFAULT_TAGS = ['Great walk', 'Zoomies', 'Barked at mailman', 'Ate something bad', 'Vet visit', 'Met a new dog', 'Training session', 'Bath day', 'Chewed something', 'Slept a lot'];
+// Health-record types. icon = inline SVG (no emoji as UI icons).
 export const EVENT_TYPES = {
-  vet: { label: 'Vet visit', icon: '🩺' },
-  vaccine: { label: 'Vaccine', icon: '💉' },
-  medication: { label: 'Medication', icon: '💊' },
-  grooming: { label: 'Grooming', icon: '✂️' },
-  training: { label: 'Training', icon: '🎓' },
-  milestone: { label: 'Milestone', icon: '🏆' },
-  incident: { label: 'Incident', icon: '⚠️' }
+  vet: { label: 'Vet visit', icon: sv('<path d="M5 3v5a4 4 0 0 0 8 0V3"/><path d="M9 12v3a5 5 0 0 0 10 0v-2"/><circle cx="19" cy="11" r="2"/>') },
+  vaccine: { label: 'Vaccine', icon: sv('<path d="m18 2 4 4M17 7l3-3M19 9 8.7 19.3a1 1 0 0 1-1.4 0l-2.6-2.6a1 1 0 0 1 0-1.4L15 5M9 11l4 4M5 19l-3 3M14 4l6 6"/>') },
+  medication: { label: 'Medication', icon: sv('<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/>') },
+  grooming: { label: 'Grooming', icon: sv('<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>') },
+  training: { label: 'Training', icon: sv('<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/>') },
+  milestone: { label: 'Milestone', icon: sv('<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>') },
+  incident: { label: 'Incident', icon: sv('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>') }
 };
-export const DOG_COLORS = ['#1D6A55', '#C9821E', '#C2533C', '#4F63B8', '#86569E', '#2F86A8'];
+// Dog avatar colors: the Scrapbook behavior palette (--b1..--b6). #D9480F/#0C8599 are nudged one step darker
+// (#C4410C = --accent-fill, #0B7285) so the white initial clears 4.5:1; inkOn() picks the initial color.
+export const DOG_COLORS = ['#C4410C', '#7048E8', '#0B7285', '#2F9E44', '#C2255C', '#E67700'];
+// Older saved dog colors from the raw behavior palette render one step darker so the white initial reads.
+export const avatarBg = (c) => ({ '#D9480F': '#C4410C', '#0C8599': '#0B7285' })[String(c || '').toUpperCase()] || c;
+// Readable initial color (white or ink) for an avatar background hex; falls back to white.
+export function inkOn(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim()); if (!m) return 'var(--ink)'; // token bg (e.g. --surface-3)
+  const lin = (i) => { const c = parseInt(m[1].slice(i, i + 2), 16) / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+  const cw = 1.05 / (L + 0.05), ci = (L + 0.05) / (0.0137 + 0.05); // vs #FFFFFF / vs #2B1B0E
+  return ci > cw ? '#2B1B0E' : '#FFFFFF';
+}
 export const SIZES = {
   small: { label: 'Small', hint: 'under 10 kg', senior: 10, rate: [15, 24, 4] },
   medium: { label: 'Medium', hint: '10–25 kg', senior: 8, rate: [15, 24, 5] },

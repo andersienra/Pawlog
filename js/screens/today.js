@@ -330,6 +330,7 @@ document.addEventListener('input', (e) => {
   const t = e.target;
   const dog = curDog();
   if (t.matches && t.matches('.slider[data-rate]')) {
+    if (touchHold && touchHold.el === t) { touchHold.pending = true; return; } // touch gesture not yet a drag: hold
     const bid = t.dataset.rate, v = Number(t.value), b = S.behaviors[bid];
     if (!b || !dog) return;
     const r = {}; r[bid] = v;
@@ -358,14 +359,30 @@ document.addEventListener('input', (e) => {
 
 // Unset slider: a tap sets it to the tapped value even when the value doesn't change (e.g. 5).
 // Commit only on pointerup, so a scroll that merely starts on a slider (pointercancel) records nothing.
+// Touch scroll-safety: on touch, Chrome moves a range thumb to the finger (firing 'input') before it decides
+// the gesture is a vertical page scroll (then 'pointercancel'). Hold touch-initiated slider input until the
+// finger moves sideways (a real drag: commit and go live) or lifts (a tap: commit); on cancel, revert.
 export let unsetTap = null;
+let touchHold = null; // { el, x, y, start, pending }
 document.addEventListener('pointerdown', (e) => {
   const t = e.target;
   unsetTap = t.matches && t.matches('.bcard.unset .slider') ? t : null;
+  touchHold = e.pointerType !== 'mouse' && t.matches && t.matches('.slider[data-rate]') ? { el: t, x: e.clientX, y: e.clientY, start: t.value, pending: false } : null;
 });
+document.addEventListener('pointermove', (e) => {
+  const h = touchHold; if (!h) return;
+  const dx = Math.abs(e.clientX - h.x), dy = Math.abs(e.clientY - h.y);
+  if (dx > 8 && dx > dy) { touchHold = null; if (h.pending) h.el.dispatchEvent(new Event('input', { bubbles: true })); }
+}, { passive: true });
 
-document.addEventListener('pointercancel', () => { unsetTap = null; });
+document.addEventListener('pointercancel', () => {
+  unsetTap = null;
+  const h = touchHold; touchHold = null;
+  if (h && h.pending && h.el.isConnected) h.el.value = h.start;
+});
 document.addEventListener('pointerup', (e) => {
+  const h = touchHold; touchHold = null;
+  if (h && h.pending && h.el.isConnected) h.el.dispatchEvent(new Event('input', { bubbles: true }));
   const t = unsetTap; unsetTap = null;
   if (t && e.target === t) setTimeout(() => { if (t.isConnected && t.closest('.bcard.unset')) t.dispatchEvent(new Event('input', { bubbles: true })); }, 0);
 });

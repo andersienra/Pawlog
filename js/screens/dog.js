@@ -4,7 +4,7 @@ import { registerActions, registerForms, registerPicks, registerScreen } from '.
 import { S, curDog, dogEntries, dueText, photosOf } from '../state.js';
 import { Store } from '../store.js';
 import { closeSheet, confirmDialog, openLightbox, openSheet, render, toast } from '../ui.js';
-import { $, EVENT_TYPES, I, SIZES, addDays, diffDays, ds, esc, fmt, genId, isDate, pd, plural, todayStr } from '../util.js';
+import { $, EVENT_TYPES, I, SIZES, avatarBg, inkOn, addDays, diffDays, ds, esc, fmt, genId, isDate, pd, plural, todayStr } from '../util.js';
 
 /* =========================================================
    DOG PROFILE
@@ -138,7 +138,7 @@ function polaroidPhoto(dog) {
   const src = dog.avatarAssetId ? photoSrc(dog.avatarAssetId) : '';
   if (src) return '<span class="ph"><img src="' + esc(src) + '" alt=""></span>';
   const ch = dog.name ? Array.from(dog.name.trim())[0].toUpperCase() : '?';
-  return '<span class="ph ph-init" style="background:' + esc(dog.color || 'var(--surface-3)') + '">' + esc(ch) + '</span>';
+  return '<span class="ph ph-init" style="background:' + esc(avatarBg(dog.color) || 'var(--surface-3)') + ';color:' + inkOn(avatarBg(dog.color)) + '">' + esc(ch) + '</span>';
 }
 export function ageText(p) {
   const out = [];

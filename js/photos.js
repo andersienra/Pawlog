@@ -1,7 +1,7 @@
 import { S, photosOf } from './state.js';
 import { ROOT, Store, canWrite, dbQueue, existing, lastWritten, localSave, withRetry, writeFailed } from './store.js';
 import { toast } from './ui.js';
-import { DOG_COLORS, esc, genId } from './util.js';
+import { DOG_COLORS, avatarBg, esc, genId, inkOn } from './util.js';
 
 /* =========================================================
    Photos — stored in the shared db so everyone on the artifact sees them.
@@ -107,7 +107,7 @@ export const imgTag = (id, alt) => {
 };
 export function avatarHtml(dog, size) {
   size = size || 32;
-  const st = 'width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.44) + 'px;background:' + esc((dog && dog.color) || DOG_COLORS[0]);
+  const st = 'width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.44) + 'px;background:' + esc(avatarBg((dog && dog.color) || DOG_COLORS[0])) + ';color:' + inkOn(avatarBg((dog && dog.color) || DOG_COLORS[0]));
   const src = dog && dog.avatarAssetId ? photoSrc(dog.avatarAssetId) : '';
   if (src) return '<span class="avatar" style="' + st + '"><img src="' + esc(src) + '" alt=""></span>';
   const ch = dog && dog.name ? Array.from(dog.name.trim())[0].toUpperCase() : '?';

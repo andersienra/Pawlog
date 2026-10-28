@@ -57,7 +57,7 @@
 
 /* Recent pages */
 .hist-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 6px 4px 10px; }
-.hist-h h2 { font-family: var(--font-display); font-weight: 800; font-size: 22px; margin: 0; letter-spacing: -.01em; }
+.hist-h h2 { font-family: var(--font-display); font-weight: 800; font-size: 20px; margin: 0; letter-spacing: -.01em; }
 .hist-h .aside { font-size: 13px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
 .hist-list { display: flex; flex-direction: column; gap: 10px; }
 .hist-empty { border: var(--bw, 2.5px) solid var(--border, var(--ink)); box-shadow: none; }

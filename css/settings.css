@@ -1,8 +1,8 @@
 /* Settings screen + behavior manager + behavior sheet (js/screens/settings.js). Scrapbook style. */
-.set-title { font-family: var(--font-display); font-weight: 800; font-size: 34px; letter-spacing: -.02em; line-height: 1.05; margin: 2px 4px 0; }
+.set-title { font-family: var(--font-display); font-weight: 800; font-size: 38px; letter-spacing: -.02em; line-height: 1.05; margin: 2px 4px 0; }
 .set-stack { gap: 22px; }
 .set-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 4px 10px; }
-.set-h h2 { font-family: var(--font-display); font-weight: 800; font-size: 21px; letter-spacing: -.01em; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.set-h h2 { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: -.01em; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .set-h h3 { font-family: var(--font-display); font-weight: 700; font-size: 17px; margin: 0; }
 .set-h .aside { font-size: 13px; color: var(--ink-3); font-weight: 600; white-space: nowrap; }
 .set-h.sub { margin-top: 16px; margin-bottom: 8px; }
@@ -17,7 +17,7 @@
 .scard .row .ri { width: 22px; height: 22px; color: var(--accent); flex: none; }
 .scard .add-row { color: var(--ink); font-weight: 800; }
 .scard .add-row .ri { color: var(--accent); }
-.scard .signout { color: var(--bad); font-weight: 800; }
+.scard .signout { color: var(--bad-text); font-weight: 800; }
 
 /* Behavior / dog manager rows */
 .bm { display: flex; align-items: center; gap: 2px; padding: 6px 6px 6px 14px; min-height: 60px; }
@@ -74,7 +74,7 @@
 .onb .onb-welcome { padding-top: 28px; }
 .onb .onb-welcome .mark { background: var(--hero, #FFD25A); color: var(--hero-ink, #2B1B0E); border: var(--bw-strong, 3px) solid var(--border, var(--ink)); box-shadow: var(--pop-sm, 3px 3px 0 var(--ink)); transform: rotate(-6deg); }
 .onb .onb-welcome h1 { font-size: 40px; }
-.onb .onb-welcome .hl { font-family: var(--font-hand, "Caveat", cursive); font-weight: 700; font-size: 1.15em; letter-spacing: 0; color: var(--accent); white-space: nowrap; }
+.onb .onb-welcome .hl { font-family: var(--font-hand, "Caveat", cursive); font-weight: 700; font-size: 1.15em; letter-spacing: 0; color: var(--accent-text); white-space: nowrap; }
 .onb-card { margin-top: 18px; padding: 18px 16px; background: var(--surface); border: var(--bw-strong, 3px) solid var(--border, var(--ink)); border-radius: var(--r-lg, 22px); box-shadow: var(--pop, 5px 5px 0 var(--ink)); margin-right: 5px; }
 .onb-card h2.display { font-size: 26px; margin-top: -8px; }
 .onb-step { font-size: 14px; font-weight: 800; color: var(--ink-3); }

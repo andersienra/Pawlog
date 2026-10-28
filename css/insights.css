@@ -1,5 +1,5 @@
 /* Insights screen (js/screens/insights.js) — scrapbook stats */
-.ins-top h1 { font-family: var(--font-display); font-weight: 800; font-size: 34px; line-height: 1.05; letter-spacing: -.02em; white-space: normal; overflow-wrap: anywhere; }
+.ins-top h1 { font-family: var(--font-display); font-weight: 800; font-size: 38px; line-height: 1.05; letter-spacing: -.02em; white-space: normal; overflow-wrap: anywhere; }
 .ins { --ins-bw: var(--bw, 2.5px); --ins-border: var(--border, var(--ink)); }
 
 /* Segmented range: ink-bordered pill, dark selected segment */
@@ -21,7 +21,7 @@
 .ins-card { background: var(--surface); border: var(--ins-bw) solid var(--ins-border); border-radius: var(--r-md, 18px); }
 .ins-note { padding: 10px 16px 16px; margin: 0; }
 .ins-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 6px 4px 10px; }
-.ins-h h2 { font-family: var(--font-display); font-weight: 800; font-size: 22px; margin: 0; letter-spacing: -.01em; }
+.ins-h h2 { font-family: var(--font-display); font-weight: 800; font-size: 20px; margin: 0; letter-spacing: -.01em; }
 .ins-h .aside { font-size: 13px; font-weight: 600; color: var(--ink-3); text-align: right; }
 
 /* Hero: average day */
@@ -51,8 +51,8 @@ button.ins-tile:active { transform: translate(-1px, -1px); box-shadow: var(--pop
 .ins-tile .k { font-size: 12px; font-weight: 700; color: var(--ink-2); }
 .ins-tile .v { font-family: var(--font-display); font-weight: 800; font-size: 26px; line-height: 1.1; }
 .ins-tile .v small { font-size: 13px; color: var(--ink-3); font-weight: 700; }
-.ins-tile .v.good { color: var(--good); }
-.ins-tile .v.bad { color: var(--bad); }
+.ins-tile .v.good { color: var(--good-text); }
+.ins-tile .v.bad { color: var(--bad-text); }
 .ins-tile .s { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Per-behavior stat cards */
@@ -88,8 +88,8 @@ button.ins-tile:active { transform: translate(-1px, -1px); box-shadow: var(--pop
 .chart-title .s { font-size: 13px; color: var(--ink-2); text-align: right; }
 
 /* Kept for any legacy markup */
-.tr.good { color: var(--good); }
-.tr.bad { color: var(--bad); }
+.tr.good { color: var(--good-text); }
+.tr.bad { color: var(--bad-text); }
 .tr.flat { color: var(--ink-3); }
 
 /* Most-logged pills */
@@ -100,7 +100,7 @@ button.ins-tile:active { transform: translate(-1px, -1px); box-shadow: var(--pop
 }
 .ins-pills .pill .tg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ins-pills .pill .n { flex: none; opacity: .85; }
-.ins-pills .pill.hot { background: var(--ins-pill-bg, color-mix(in oklab, var(--c) 84%, #000)); color: var(--ins-pill-ink, #FFFFFF); }
+.ins-pills .pill.hot { background: color-mix(in oklab, var(--c) 84%, #000); color: #FFFFFF; }
 
 /* Consistency dots */
 .dots { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px 16px 16px; }
@@ -119,12 +119,12 @@ button.ins-tile:active { transform: translate(-1px, -1px); box-shadow: var(--pop
 
 /* Dark: behavior colors are light tints there, so pills take dark ink and averages use the color itself. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --ins-pill-ink: #1E1610; --ins-pill-bg: var(--c); }
+  :root:not([data-theme="light"]) .ins-pills .pill.hot { background: var(--c); color: #1E1610; }
   :root:not([data-theme="light"]) .bstat .avg { color: var(--c); }
   :root:not([data-theme="light"]) .bstat .hand.good { color: var(--good); }
   :root:not([data-theme="light"]) .bstat .hand.bad { color: var(--bad); }
 }
-:root[data-theme="dark"] { --ins-pill-ink: #1E1610; --ins-pill-bg: var(--c); }
+:root[data-theme="dark"] .ins-pills .pill.hot { background: var(--c); color: #1E1610; }
 :root[data-theme="dark"] .bstat .avg { color: var(--c); }
 :root[data-theme="dark"] .bstat .hand.good { color: var(--good); }
 :root[data-theme="dark"] .bstat .hand.bad { color: var(--bad); }
