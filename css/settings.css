@@ -114,3 +114,4 @@
 }
 .tp-back { min-height: 48px; }
 @media (prefers-reduced-motion: reduce) { .tpc, .onb-go, .tp-go { transition: none; } .tpc:active { transform: none; } }
+.emoji-in { max-width: 96px; text-align: center; font-size: 22px; }

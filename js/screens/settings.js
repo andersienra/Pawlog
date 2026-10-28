@@ -107,6 +107,7 @@ export function openBehaviorSheet(bid) {
     '<div class="two"><label class="field"><span>Low end (1)</span><input class="input" id="b_low" name="lowLabel" maxlength="30" placeholder="e.g. None" value="' + esc(b ? b.lowLabel : '') + '"></label>' +
     '<label class="field"><span>High end (10)</span><input class="input" id="b_high" name="highLabel" maxlength="30" placeholder="e.g. A lot" value="' + esc(b ? b.highLabel : '') + '"></label></div>' +
     '<label class="toggle scard"><span><div class="t">Higher is better</div><div class="small muted">Turn off for things you want less of, like barking or anxiety.</div></span><input type="checkbox" id="b_hib" name="higherIsBetter"' + (!b || b.higherIsBetter ? ' checked' : '') + '></label>' +
+    '<label class="field"><span>Emoji <span class="faint">(optional)</span></span><input class="input emoji-in" id="b_emoji" name="emoji" maxlength="8" placeholder="🐾" value="' + esc(b && b.emoji !== '🐾' ? b.emoji : '') + '"></label>' +
     '<button class="btn block" type="submit">' + (b ? 'Save' : 'Add behavior') + '</button>' +
     (b ? '<button class="btn block soft" type="button" data-action="' + (b.archived ? 'unarchive-behavior' : 'archive-behavior') + '" data-id="' + esc(bid) + '">' + I.archive + (b.archived ? 'Restore to Today' : 'Archive (keep history)') + '</button>' +
       '<button class="btn block danger" type="button" data-action="delete-behavior" data-id="' + esc(bid) + '">' + I.trash + 'Delete behavior</button>' : '') + '</form>';
@@ -178,7 +179,7 @@ registerForms({
     const name = String(fd.get('name') || '').trim().replace(/\s+/g, ' ');
     if (!name) { toast('Give the behavior a name.', true); const i = $('#b_name'); if (i) i.focus(); return; }
     const b = Object.assign({}, prev || { dogId: dog.id, archived: false, order: Math.max(-1, ...dogBehaviors(dog.id).map((x) => x.order || 0)) + 1 }, {
-      id: id, name: name, emoji: (prev && prev.emoji) || '🐾',
+      id: id, name: name, emoji: String(fd.get('emoji') || '').trim() || '🐾',
       lowLabel: String(fd.get('lowLabel') || '').trim() || 'Low', highLabel: String(fd.get('highLabel') || '').trim() || 'High',
       higherIsBetter: fd.get('higherIsBetter') === 'on'
     });
