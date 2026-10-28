@@ -1,5 +1,5 @@
 // Dog profile screen: age, gotcha day, health & care records (+ record sheet), vet & ID, gallery.
-import { avatarHtml, imgTag, releasePhoto, savePhoto } from '../photos.js';
+import { imgTag, photoSrc, releasePhoto, savePhoto } from '../photos.js';
 import { registerActions, registerForms, registerPicks, registerScreen } from '../registry.js';
 import { S, curDog, dogEntries, dueText, photosOf } from '../state.js';
 import { Store } from '../store.js';
@@ -62,77 +62,105 @@ export function galleryFor(dog) {
 
 export function renderDog(dog) {
   const t = todayStr();
-  const meta = [dog.breed, dog.sex ? (dog.sex === 'female' ? 'Female' : 'Male') : '', SIZES[dog.size] ? SIZES[dog.size].label + ' size' : ''].filter(Boolean).join(' · ');
-  let h = '<header class="topbar"><h1>' + esc(dog.name) + '</h1><button class="icon-btn" data-action="edit-dog" data-id="' + esc(dog.id) + '" aria-label="Edit profile">' + I.edit + '</button><button class="icon-btn" data-action="tab" data-view="prefs" aria-label="Settings">' + I.gear + '</button></header><div class="stack">';
-  h += '<div class="hero"><label class="av-wrap" for="filePick" data-pick="avatar" aria-label="Change photo">' + avatarHtml(dog, 120) + '<span class="cam">' + I.camera + '</span></label>' +
-    '<div><div class="sub">' + (meta ? esc(meta) : '<button class="linkbtn" data-action="edit-dog" data-id="' + esc(dog.id) + '">Add breed and details</button>') + '</div></div></div>';
+  const sexTxt = dog.sex ? (dog.sex === 'female' ? 'Female' : 'Male') : '';
+  const meta = [dog.breed, sexTxt].filter(Boolean).join(' · ');
+  const sizeTxt = SIZES[dog.size] ? SIZES[dog.size].label + ' size' : '';
+  const ay = dog.birthday ? diffDays(dog.birthday, t) / 365.25 : null;
+  let h = '<header class="topbar dog-top"><span class="spacer"></span><button class="icon-btn" data-action="edit-dog" data-id="' + esc(dog.id) + '" aria-label="Edit profile">' + I.edit + '</button><button class="icon-btn" data-action="tab" data-view="prefs" aria-label="Settings">' + I.gear + '</button></header><div class="stack dog-stack">';
 
-  // Age
+  // Hero: taped polaroid + name, breed/sex, life stage
+  h += '<div class="dog-hero"><label class="pola av-wrap" for="filePick" data-pick="avatar" aria-label="Change ' + esc(dog.name) + '’s photo"><span class="tape" aria-hidden="true"></span>' + polaroidPhoto(dog) + '<span class="cam">' + I.camera + '</span></label>' +
+    '<div class="who"><h1>' + esc(dog.name) + '</h1>' +
+    (meta ? '<div class="sub">' + esc(meta) + '</div>' : '<button class="linkbtn" data-action="edit-dog" data-id="' + esc(dog.id) + '">Add breed and details</button>') +
+    (sizeTxt && meta ? '<div class="sub faint">' + esc(sizeTxt) + '</div>' : '') +
+    (ay != null ? '<span class="stage">' + lifeStage(ay, dog.size) + '</span>' : '') + '</div></div>';
+
+  // Age (hero card)
   if (dog.birthday) {
     const p = ageParts(dog.birthday, t);
     const ageDays = diffDays(dog.birthday, t);
-    const ay = ageDays / 365.25;
     const hy = humanYears(ay, dog.size);
     const nb = nextAnniversary(dog.birthday, t);
-    h += '<section><div class="group-label"><span>Age</span><span class="stage">' + lifeStage(ay, dog.size) + '</span></div><div class="panel">';
-    h += '<div style="padding:16px 16px 12px"><div class="agebig">' + partsText(p) + '</div><div class="small muted" style="margin-top:2px">Born ' + esc(fmt(dog.birthday, { month: 'long', day: 'numeric', year: 'numeric' })) + ' · ' + ageDays.toLocaleString() + ' days old</div></div>';
-    h += '<div class="kv" style="border-top:1px solid var(--line)"><div><div class="k">Human years</div><div class="v">≈ ' + Math.round(hy) + '</div><div class="s">for a ' + esc((SIZES[dog.size] || SIZES.medium).label.toLowerCase()) + ' dog</div></div>' +
-      '<div><div class="k">Next birthday</div><div class="v">' + (nb.days === 0 ? 'Today!' : nb.days + '<span style="font-size:15px;color:var(--ink-3);font-weight:650"> days</span>') + '</div><div class="s">Turns ' + nb.years + ' on ' + esc(fmt(nb.date, { month: 'short', day: 'numeric' })) + '</div></div></div>';
-    h += '<div style="padding:0 16px 14px"><div class="yearbar" aria-hidden="true"><i style="width:' + (nb.sinceLast / nb.span * 100).toFixed(1) + '%"></i></div><div class="small faint">' + (nb.days === 0 ? 'Happy birthday, ' + esc(dog.name) + '!' : Math.round(nb.sinceLast / nb.span * 100) + '% of the way to birthday #' + nb.years) + '</div></div>';
-    h += '<div style="padding:0 16px 16px"><div class="flabel" style="margin-bottom:6px">Size used for human years</div><div class="seg" role="group" aria-label="Size">' + Object.keys(SIZES).map((k) => '<button data-action="set-size" data-size="' + k + '" aria-pressed="' + ((dog.size || 'medium') === k) + '">' + SIZES[k].label + '</button>').join('') + '</div></div>';
-    h += '</div></section>';
+    const pct = Math.max(0, Math.min(100, nb.sinceLast / nb.span * 100));
+    h += '<section class="age-card" aria-label="Age"><div class="ac-top"><span class="ac-k">Age</span><span class="hand">about ' + Math.round(hy) + ' in human years</span></div>' +
+      '<div class="agebig num">' + esc(ageText(p)) + '</div>' +
+      '<div class="small ac-born">Born ' + esc(fmt(dog.birthday, { month: 'long', day: 'numeric', year: 'numeric' })) + ' · ' + ageDays.toLocaleString() + ' days old</div>' +
+      '<div class="ac-next"><span>' + (nb.days === 0 ? 'Happy birthday, ' + esc(dog.name) + '!' : 'Next birthday') + '</span><span class="num">' + (nb.days === 0 ? 'Turns ' + nb.years + ' today' : esc(fmt(nb.date, { month: 'short', day: 'numeric' })) + ' · ' + plural(nb.days, 'day')) + '</span></div>' +
+      '<div class="yearbar" role="img" aria-label="' + Math.round(pct) + '% of the way to birthday number ' + nb.years + '"><i style="width:' + pct.toFixed(1) + '%"></i></div></section>';
+    h += '<section class="dog-size"><div class="flabel">Size used for human years</div><div class="seg" role="group" aria-label="Size">' + Object.keys(SIZES).map((k) => '<button data-action="set-size" data-size="' + k + '" aria-pressed="' + ((dog.size || 'medium') === k) + '">' + SIZES[k].label + '</button>').join('') + '</div></section>';
   } else {
-    h += '<section class="panel"><div class="empty"><h3>When is ' + esc(dog.name) + '’s birthday?</h3><p>Add it to see exact age, human years and a birthday countdown. A best guess is fine.</p><button class="btn sm soft" data-action="edit-dog" data-id="' + esc(dog.id) + '">Add birthday</button></div></section>';
+    h += '<section class="age-card age-empty"><div class="ac-top"><span class="ac-k">Age</span><span class="hand">a best guess is fine</span></div><h3>When is ' + esc(dog.name) + '’s birthday?</h3><p>Add it to see exact age, human years and a birthday countdown.</p><button class="btn sm ac-btn" data-action="edit-dog" data-id="' + esc(dog.id) + '">Add birthday</button></section>';
   }
 
   // Gotcha
   if (dog.gotchaDate) {
     const p = ageParts(dog.gotchaDate, t);
     const na = nextAnniversary(dog.gotchaDate, t);
-    h += '<section class="panel"><div class="kv"><div><div class="k">Home for</div><div class="v" style="font-size:20px;line-height:1.25;padding-top:4px">' + esc(plainParts(p) || 'Day one') + '</div><div class="s">since ' + esc(fmt(dog.gotchaDate, { month: 'short', day: 'numeric', year: 'numeric' })) + '</div></div>' +
-      '<div><div class="k">Gotcha day</div><div class="v">' + (na.days === 0 ? 'Today!' : na.days + '<span style="font-size:15px;color:var(--ink-3);font-weight:650"> days</span>') + '</div><div class="s">' + plural(na.years, 'year') + ' together on ' + esc(fmt(na.date, { month: 'short', day: 'numeric' })) + '</div></div></div></section>';
+    h += '<section class="dcard kv"><div><div class="k">Home for</div><div class="v sm">' + esc(plainParts(p) || 'Day one') + '</div><div class="s">since ' + esc(fmt(dog.gotchaDate, { month: 'short', day: 'numeric', year: 'numeric' })) + '</div></div>' +
+      '<div><div class="k">Gotcha day</div><div class="v num">' + (na.days === 0 ? 'Today!' : na.days + '<span class="u"> days</span>') + '</div><div class="s">' + plural(na.years, 'year') + ' together on ' + esc(fmt(na.date, { month: 'short', day: 'numeric' })) + '</div></div></section>';
   }
 
-  // Health & care
+  // Health & care: "Coming up" reminders, then the full timeline
   const evs = Object.values(S.events).filter((e) => e && e.dogId === dog.id);
   const upcoming = evs.filter((e) => isDate(e.nextDue)).sort((a, b) => (a.nextDue < b.nextDue ? -1 : 1));
   const past = evs.slice().sort((a, b) => ((a.date || '') < (b.date || '') ? 1 : -1));
-  h += '<section><div class="group-label"><span>Health &amp; care</span><button class="linkbtn" style="min-height:32px;text-transform:none;letter-spacing:0;font-size:15px" data-action="add-event">' + I.plus + 'Add</button></div>';
+  h += '<section><div class="dog-h"><h2>Coming up</h2><button class="linkbtn" data-action="add-event">' + I.plus + 'Add record</button></div>';
   if (!evs.length) {
-    h += '<div class="panel"><div class="empty"><h3>No health records yet</h3><p>Log vet visits, vaccines, meds and grooming. Set a next-due date and Pawlog reminds you on the Today screen.</p><button class="btn sm soft" data-action="add-event">' + I.plus + 'Add a record</button></div></div>';
+    h += '<div class="dcard dashed"><div class="empty"><h3>No health records yet</h3><p>Log vet visits, vaccines, meds and grooming. Set a next-due date and Pawlog reminds you on the Today screen.</p><button class="btn sm" data-action="add-event">' + I.plus + 'Add a record</button></div></div>';
+  } else if (!upcoming.length) {
+    h += '<p class="small muted dog-note">Nothing due. Give a record a next-due date to get a reminder.</p>';
   } else {
-    if (upcoming.length) {
-      h += '<div class="panel rows" style="margin-bottom:10px">' + upcoming.map((e) => { const dt = dueText(e.nextDue); return eventRow(e, '<span class="due ' + dt.cls + '">' + esc(dt.txt) + '</span>'); }).join('') + '</div>';
-    }
-    h += '<div class="group-label" style="margin-top:6px"><span>Timeline</span></div><div class="panel rows">' + past.map((e) => eventRow(e, '')).join('') + '</div>';
+    h += '<div class="due-list">' + upcoming.map((e) => dueCard(e)).join('') + '</div>';
   }
+  if (evs.length) h += '<div class="dog-h sub-h"><h3>Health timeline</h3><span class="aside">' + plural(evs.length, 'record') + '</span></div><div class="dcard rows">' + past.map((e) => eventRow(e, '')).join('') + '</div>';
   h += '</section>';
 
   // Vet & ID
   const vet = dog.vet || {};
-  h += '<section><div class="group-label"><span>Vet &amp; ID</span></div><div class="panel rows">';
+  h += '<section><div class="dog-h"><h2>Vet &amp; ID</h2></div><div class="dcard rows">';
   h += infoRow('Vet', vet.name, 'Add your vet');
   h += infoRow('Vet phone', vet.phone, 'Add a phone number', true);
   h += infoRow('Microchip', dog.microchip, 'Add microchip number', true);
   h += '</div></section>';
 
-  if (dog.notes && dog.notes.trim()) h += '<section><div class="group-label"><span>Notes</span></div><div class="panel pad" style="white-space:pre-wrap;overflow-wrap:anywhere">' + esc(dog.notes) + '</div></section>';
+  if (dog.notes && dog.notes.trim()) h += '<section><div class="dog-h"><h2>Notes</h2></div><div class="dcard notecard">' + esc(dog.notes) + '</div></section>';
 
-  // Gallery
+  // Gallery: scattered polaroids
   const gal = galleryFor(dog);
-  h += '<section><div class="group-label"><span>Photos</span>' + (gal.length ? '<span class="aside">' + gal.length + '</span>' : '') + '</div><div class="panel">';
-  if (gal.length) h += '<div class="gallery">' + gal.map((g, i) => '<button data-action="lightbox-gallery" data-i="' + i + '" aria-label="Photo from ' + esc(fmt(g.date, { month: 'short', day: 'numeric' })) + '">' + imgTag(g.id, '') + '</button>').join('') + '</div>';
-  else h += '<div class="empty"><h3>No photos yet</h3><p>Photos you add to daily logs collect here.</p></div>';
-  h += '</div></section></div>';
+  h += '<section><div class="dog-h"><h2>Photos</h2>' + (gal.length ? '<span class="aside">' + gal.length + '</span>' : '') + '</div>';
+  if (gal.length) h += '<div class="gallery">' + gal.map((g, i) => '<button class="gpola" style="--rot:' + ROTS[i % ROTS.length] + 'deg" data-action="lightbox-gallery" data-i="' + i + '" aria-label="Photo from ' + esc(fmt(g.date, { month: 'short', day: 'numeric' })) + '">' + imgTag(g.id, '') + '</button>').join('') + '</div>';
+  else h += '<div class="dcard dashed"><div class="empty"><h3>No photos yet</h3><p>Photos you add to daily logs collect here.</p></div></div>';
+  h += '</section></div>';
   return h;
+}
+const ROTS = [-3, 2, -1, 3, -2, 1.5, -2.5, 1];
+function polaroidPhoto(dog) {
+  const src = dog.avatarAssetId ? photoSrc(dog.avatarAssetId) : '';
+  if (src) return '<span class="ph"><img src="' + esc(src) + '" alt=""></span>';
+  const ch = dog.name ? Array.from(dog.name.trim())[0].toUpperCase() : '?';
+  return '<span class="ph ph-init" style="background:' + esc(dog.color || 'var(--surface-3)') + '">' + esc(ch) + '</span>';
+}
+export function ageText(p) {
+  const out = [];
+  if (p.y) out.push(p.y + ' ' + (p.y === 1 ? 'yr' : 'yrs'));
+  if (p.m || p.y) out.push(p.m + ' ' + (p.m === 1 ? 'mo' : 'mos'));
+  out.push(p.d + ' ' + (p.d === 1 ? 'day' : 'days'));
+  return out.join(', ');
+}
+function dueCard(e) {
+  const ty = EVENT_TYPES[e.type] || EVENT_TYPES.vet;
+  const dt = dueText(e.nextDue);
+  const short = dt.cls ? dt.txt.replace(/^Due /, '') : fmt(e.nextDue, { month: 'short', day: 'numeric', year: pd(e.nextDue).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
+  return '<button class="due-card" data-action="edit-event" data-id="' + esc(e.id) + '"><span class="grow"><span class="t">' + esc(e.title || ty.label) + '</span><span class="s">' + esc(ty.label) + (e.notes ? ' · ' + esc(e.notes) : '') + '</span></span>' +
+    '<span class="due ' + dt.cls + '"><span class="vh">' + esc(dt.txt) + '</span><span aria-hidden="true">' + esc(short.charAt(0).toUpperCase() + short.slice(1)) + '</span></span></button>';
 }
 export function eventRow(e, extra) {
   const ty = EVENT_TYPES[e.type] || EVENT_TYPES.vet;
   return '<button class="ev" data-action="edit-event" data-id="' + esc(e.id) + '"><span class="ic" aria-hidden="true">' + ty.icon + '</span><span class="grow"><div class="t">' + esc(e.title || ty.label) + '</div><div class="s">' + esc(ty.label) + (isDate(e.date) ? ' · ' + esc(fmt(e.date, { month: 'short', day: 'numeric', year: 'numeric' })) : '') + '</div>' +
-    (e.notes ? '<div class="s" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.notes) + '</div>' : '') + extra + '</span></button>';
+    (e.notes ? '<div class="s ell">' + esc(e.notes) + '</div>' : '') + extra + '</span>' + I.chevR.replace('<svg', '<svg class="chev"') + '</button>';
 }
 export function infoRow(k, v, empty, copy) {
-  if (!v) return '<button class="row" data-action="edit-dog" data-id="' + esc(curDog().id) + '"><span class="grow"><div class="s">' + esc(k) + '</div><div class="t" style="color:var(--accent)">' + esc(empty) + '</div></span></button>';
+  if (!v) return '<button class="row" data-action="edit-dog" data-id="' + esc(curDog().id) + '"><span class="grow"><div class="s">' + esc(k) + '</div><div class="t add-t">' + I.plus + esc(empty) + '</div></span></button>';
   return '<div class="row"><span class="grow"><div class="s">' + esc(k) + '</div><div class="t copyable num">' + esc(v) + '</div></span>' + (copy ? '<button class="icon-btn" data-action="copy" data-text="' + esc(v) + '" aria-label="Copy ' + esc(k) + '">' + I.copy + '</button>' : '') + '</div>';
 }
 

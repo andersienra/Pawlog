@@ -1,10 +1,11 @@
-// Today screen: date bar, reminders, score summary, behavior sliders, tags, notes, details, photos.
+// Today screen (Scrapbook): date header, reminders, polaroid + vibe score card, behavior sliders, tags,
+// lined-paper notes, details, photos.
 import { avatarHtml, imgTag, releasePhoto, savePhoto } from '../photos.js';
 import { registerActions, registerForms, registerPicks, registerScreen } from '../registry.js';
-import { S, curDog, dogBehaviors, dueEvents, dueText, entryId, entryScore, getEntry, goodness, isLogged, normalizeEntry, photosOf, ratingsOf, saveQuickTags, scoreWord, settings, streakFor, tagsOf, valueColor } from '../state.js';
+import { S, curDog, dogBehaviors, dueEvents, dueText, entryId, entryScore, getEntry, goodness, isLogged, normalizeEntry, photosOf, ratingsOf, saveQuickTags, scoreWord, settings, streakFor, tagsOf } from '../state.js';
 import { Store, byLine, canWrite, flushPending, pendingEdits, refreshSaveState } from '../store.js';
 import { autoGrow, bannerHtml, confirmDialog, dragging, go, openLightbox, render, toast } from '../ui.js';
-import { $, $$, EVENT_TYPES, I, addDays, clamp, diffDays, esc, fmt, isDate, pd, plural, round1, todayStr } from '../util.js';
+import { $, $$, EVENT_TYPES, I, PAW, addDays, clamp, diffDays, esc, fmt, isDate, pd, plural, round1, todayStr } from '../util.js';
 
 /* =========================================================
    TODAY
@@ -18,51 +19,57 @@ export function renderToday(dog) {
   const streak = streakFor(dog.id);
   const isToday = date === t;
   const dayDiff = diffDays(date, t);
-  const big = isToday ? 'Today' : dayDiff === 1 ? 'Yesterday' : fmt(date, { weekday: 'long' });
-  const sub = fmt(date, { month: 'long', day: 'numeric', year: pd(date).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
+  const rel = isToday ? 'Today' : dayDiff === 1 ? 'Yesterday' : '';
+  const sub = fmt(date, { weekday: 'long', month: 'short', day: 'numeric', year: pd(date).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
 
   let h = '<header class="topbar"><button class="dog-chip" data-action="switch-dog" aria-label="Switch dog">' + avatarHtml(dog, 34) + '<span class="nm">' + esc(dog.name) + '</span>' + I.chevD + '</button><span class="spacer"></span>' +
     '<span id="savestate" class="savestate" aria-live="polite"></span>' +
     (streak > 0 ? '<span class="streak" title="Days in a row with a log">' + I.flame + '<span class="num">' + streak + '</span></span>' : '') + '</header>';
   h += bannerHtml();
-  h += '<div class="stack">';
-  h += '<div class="datebar"><button class="icon-btn" data-action="day" data-d="-1" aria-label="Previous day">' + I.chevL + '</button>' +
-    '<div class="when"><div class="big">' + esc(big) + '</div><div class="sub">' + I.cal + esc(sub) + '</div>' +
+  h += '<div class="stack today">';
+  // Date header: kicker date + "<Name>'s day". The whole title block opens the date picker.
+  h += '<div class="datebar day-head"><div class="when"><div class="kicker">' + I.cal + '<span>' + (rel ? esc(rel) + ' · ' : '') + esc(sub) + '</span></div>' +
+    '<h1 class="big">' + esc(dog.name) + '’s day</h1>' +
     '<input type="date" id="datePick" aria-label="Pick a date" max="' + t + '" value="' + date + '"></div>' +
-    '<button class="icon-btn" data-action="day" data-d="1" aria-label="Next day"' + (isToday ? ' disabled' : '') + '>' + I.chevR + '</button></div>';
+    '<div class="navs"><button class="icon-btn" data-action="day" data-d="-1" aria-label="Previous day">' + I.chevL + '</button>' +
+    '<button class="icon-btn" data-action="day" data-d="1" aria-label="Next day"' + (isToday ? ' disabled' : '') + '>' + I.chevR + '</button></div></div>';
   if (!isToday) h += '<button class="jump-today" data-action="goto-today">Back to today</button>';
 
   const due = dueEvents(dog.id, 7);
   if (due.length && isToday) {
-    h += '<div style="display:flex;flex-direction:column;gap:8px">' + due.slice(0, 3).map((ev) => {
+    h += '<div class="reminders">' + due.slice(0, 3).map((ev) => {
       const dt = dueText(ev.nextDue);
-      return '<button class="reminder ' + (dt.cls === 'over' ? 'overdue' : '') + '" data-action="edit-event" data-id="' + esc(ev.id) + '"><span class="ic">' + (EVENT_TYPES[ev.type] || EVENT_TYPES.vet).icon + '</span><span class="grow" style="flex:1;min-width:0"><div class="t">' + esc(ev.title || (EVENT_TYPES[ev.type] || EVENT_TYPES.vet).label) + '</div><div class="s">' + esc(dt.txt) + '</div></span>' + '<svg class="chev" style="width:18px;height:18px;color:var(--ink-3)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>';
+      return '<button class="reminder ' + (dt.cls === 'over' ? 'overdue' : dt.cls) + '" data-action="edit-event" data-id="' + esc(ev.id) + '"><span class="ic">' + I.cal + '</span><span class="grow"><div class="t">' + esc(ev.title || (EVENT_TYPES[ev.type] || EVENT_TYPES.vet).label) + '</div><div class="s">' + esc((EVENT_TYPES[ev.type] || EVENT_TYPES.vet).label) + '</div></span><span class="pill">' + esc(dt.txt) + '</span></button>';
     }).join('') + '</div>';
   }
 
-  h += '<section class="panel" id="summary">' + summaryInner(dog, e, bs) + '</section>';
+  // Polaroid of the day's first photo beside the "vibe" score card.
+  h += '<div class="today-top">' + polaroidHtml(e) + '<section class="vibe" id="summary" aria-live="polite">' + summaryInner(dog, e, bs) + '</section></div>';
 
   // Behaviors
-  h += '<section><div class="group-label"><span>How was ' + esc(dog.name) + '?</span><span class="aside">1–10</span></div><div class="panel rows">';
+  h += '<section><div class="group-label"><span>How was ' + esc(dog.name) + '?</span><span class="aside">1–10</span></div><div class="blist">';
   if (!bs.length) {
-    h += '<div class="empty"><h3>No behaviors to rate</h3><p>Add the things you want to track in Settings.</p><button class="btn soft sm" data-action="tab" data-view="prefs">Open Settings</button></div>';
+    h += '<div class="bempty"><h3>Nothing to rate yet</h3><p>Add the things you want to track for ' + esc(dog.name) + ': energy, recall, barking, anything.</p></div>';
   }
   const rs = ratingsOf(e);
-  for (const b of bs) h += behaviorCard(b, rs[b.id]);
-  h += '</div></section>';
+  bs.forEach((b, i) => { h += behaviorCard(b, rs[b.id], i); });
+  h += '</div>';
+  if (!S.readOnly) h += '<div class="beh-tools"><button class="beh-add" data-action="behavior-new">' + I.plus + 'Add behavior</button>' +
+    (bs.length ? '<button class="beh-edit" data-action="behaviors-manage">' + I.edit + 'Edit</button>' : '') + '</div>';
+  h += '</section>';
 
   // Tags
   const qt = settings().quickTags || [];
   const tags = tagsOf(e);
   const extra = tags.filter((x) => qt.indexOf(x) < 0);
-  h += '<section><div class="group-label"><span>What happened</span></div><div class="panel pad"><div class="chips" data-tagbox>' +
+  h += '<section class="today-tags"><div class="group-label"><span>What happened</span></div><div class="chips" data-tagbox>' +
     qt.concat(extra).map((tg) => '<button class="chip" data-action="toggle-tag" data-tag="' + esc(tg) + '" aria-pressed="' + (tags.indexOf(tg) >= 0) + '">' + esc(tg) + '</button>').join('') +
     (S.addingTag || S.readOnly ? '' : '<button class="chip add" data-action="add-tag">' + I.plus + 'Tag</button>') + '</div>' +
     (S.addingTag ? '<form class="tag-input" data-form="tag-new"><input class="input" id="tagNew" name="tag" maxlength="40" placeholder="New tag" autocomplete="off" enterkeyhint="done"><button class="btn sm" type="submit">Add</button><button class="btn sm ghost" type="button" data-action="cancel-tag">Cancel</button></form>' : '') +
-    '</div></section>';
+    '</section>';
 
-  // Notes
-  h += '<section><div class="group-label"><span>Notes</span></div><div class="panel"><textarea class="input notes-area" id="notes" data-autogrow maxlength="5000" placeholder="Anything worth remembering? Triggers, wins, what you tried…">' + esc(e.notes || '') + '</textarea></div></section>';
+  // Notes (lined paper)
+  h += '<section><div class="group-label"><span>Notes</span></div><div class="panel paper"><textarea class="input notes-area" id="notes" data-autogrow maxlength="5000" aria-label="Notes" placeholder="Anything worth remembering? Triggers, wins, what you tried…">' + esc(e.notes || '') + '</textarea></div></section>';
 
   // Details
   const unit = dog.weightUnit || 'kg';
@@ -81,7 +88,7 @@ export function renderToday(dog) {
 
   const bl = byLine(getEntry(dog.id, date));
   h += '<p class="byline" id="byline" aria-live="polite">' + esc(bl) + '</p>';
-  if (isLogged(getEntry(dog.id, date)) && !S.readOnly) h += '<div style="text-align:center"><button class="linkbtn" style="color:var(--bad)" data-action="clear-day">' + I.trash + 'Clear this day</button></div>';
+  if (isLogged(getEntry(dog.id, date)) && !S.readOnly) h += '<div style="text-align:center"><button class="linkbtn danger" data-action="clear-day">' + I.trash + 'Clear this day</button></div>';
   h += '</div>';
   return h;
 }
@@ -93,30 +100,65 @@ export function photoGridHtml(e) {
     Array.from({ length: S.uploading }).map(() => '<div class="ph loading"></div>').join('') +
     (S.readOnly ? (ph.length ? '' : '<p class="small muted" style="margin:4px;grid-column:1/-1">No photos for this day.</p>') : '<label for="filePick" class="ph add" data-pick="entry">' + I.camera + '<span>Add</span></label>') + '</div>';
 }
+// Taped polaroid: the day's first photo (opens the lightbox), or an "add a photo" frame.
+// data-key lets patchToday skip rebuilding it when nothing it shows has changed.
+export function polaroidHtml(e) {
+  const ph = photosOf(e);
+  const tags = tagsOf(e);
+  const isToday = S.date === todayStr();
+  const cap = tags.length ? tags[0].toLowerCase() : ph.length ? (isToday ? 'today!' : fmt(S.date, { month: 'short', day: 'numeric' })) : '';
+  const key = (ph[0] || '') + '|' + cap + '|' + (S.readOnly ? 1 : 0) + '|' + (ph[0] ? (photoSrcKnown(ph[0]) ? 1 : 0) : 0);
+  const tape = '<span class="tape" aria-hidden="true"></span>';
+  const capHtml = '<span class="cap">' + esc(cap || (S.readOnly ? 'no photo' : 'add a photo')) + '</span>';
+  if (ph.length) {
+    return '<button class="polaroid" id="polaroid" data-key="' + esc(key) + '" data-action="lightbox-entry" data-i="0" aria-label="Open the first photo of the day">' + tape + '<span class="pic">' + imgTag(ph[0], '') + '</span>' + capHtml + '</button>';
+  }
+  if (S.readOnly) return '<div class="polaroid empty" id="polaroid" data-key="' + esc(key) + '">' + tape + '<span class="pic">' + PAW + '</span>' + capHtml + '</div>';
+  return '<label for="filePick" class="polaroid empty" id="polaroid" data-key="' + esc(key) + '" data-pick="entry" aria-label="Add a photo for this day">' + tape + '<span class="pic">' + I.camera + '</span>' + capHtml + '</label>';
+}
+function photoSrcKnown(id) { return !/ph-missing/.test(imgTag(id, '')); }
+function refreshPolaroid(e) {
+  const p = $('#polaroid'); if (!p) return;
+  const wrap = document.createElement('div'); wrap.innerHTML = polaroidHtml(e);
+  const n = wrap.firstElementChild;
+  if (n.dataset.key !== p.dataset.key) p.replaceWith(n);
+}
 export function summaryInner(dog, e, bs) {
   const score = entryScore(Object.assign({ dogId: dog.id }, e));
   const rs = ratingsOf(e);
   const rated = bs.filter((b) => typeof rs[b.id] === 'number').length;
-  const C = 2 * Math.PI * 36;
-  const pct = score == null ? 0 : score / 100;
-  const col = score == null ? 'var(--surface-3)' : valueColor(pct);
-  return '<div class="summary"><div class="ring"><svg viewBox="0 0 84 84"><circle cx="42" cy="42" r="36" fill="none" stroke="var(--surface-2)" stroke-width="9"/><circle cx="42" cy="42" r="36" fill="none" stroke="' + col + '" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + (C * pct).toFixed(1) + ' ' + C.toFixed(1) + '"/></svg>' +
-    '<div class="v num"><div>' + (score == null ? '–' : score) + '<small>score</small></div></div></div>' +
-    '<div class="txt"><div class="word">' + scoreWord(score) + '</div><div class="meta">' + (rated ? rated + ' of ' + bs.length + ' rated' : 'Slide a behavior below to start today’s log') + '</div>' +
-    '<div class="progress" aria-hidden="true"><i style="width:' + (bs.length ? Math.round(rated / bs.length * 100) : 0) + '%"></i></div></div></div>';
+  const isToday = S.date === todayStr();
+  const k = isToday ? 'Today’s vibe' : diffDays(S.date, todayStr()) === 1 ? 'Yesterday’s vibe' : 'The day’s vibe';
+  return '<div class="summary"><div class="k">' + k + '</div>' +
+    '<div class="score num' + (score == null ? ' none' : '') + '">' + (score == null ? '–' : score) + '</div>' +
+    '<div class="word">' + scoreWord(score) + '</div>' +
+    '<div class="meta">' + (rated ? rated + ' of ' + bs.length + ' rated' : bs.length ? 'Slide one to start' : 'Add a behavior to start') + '</div>' +
+    '<div class="progress" aria-hidden="true"><i style="width:' + (bs.length ? Math.round(rated / bs.length * 100) : 0) + '%"></i></div></div>';
 }
-export function behaviorCard(b, v) {
+// Handwritten verdict for a rating, from how good it is (so "low is better" behaviors read right).
+export function ratingWord(b, v) {
+  const g = goodness(b, v);
+  return g >= 9 ? 'great' : g >= 7 ? 'good' : g >= 5 ? 'okay' : g >= 3 ? 'not great' : 'rough';
+}
+function bvalHtml(b, v) {
+  return typeof v === 'number' ? '<span class="bw">' + ratingWord(b, v) + '</span> · ' + v : 'Not rated';
+}
+// i = position in the dog's behavior list; colors cycle --b1..--b6 by order.
+export function behaviorCard(b, v, i) {
+  if (i == null) i = Math.max(0, dogBehaviors(b.dogId).findIndex((x) => x.id === b.id));
   const set = typeof v === 'number';
   const val = set ? v : 5;
-  const g = (goodness(b, val) - 1) / 9;
-  const st = set ? '--c:' + valueColor(g) + ';--p:' + ((val - 1) / 9 * 100).toFixed(1) + '%' : '';
+  const n = (i % 6) + 1;
+  const st = '--c:var(--b' + n + ',' + B_FALLBACK[n - 1] + ');--pf:' + ((val - 1) / 9).toFixed(3);
   return '<div class="bcard' + (set ? '' : ' unset') + '" data-bid="' + esc(b.id) + '" style="' + st + '">' +
     '<div class="bhead"><span class="bemoji" aria-hidden="true">' + esc(b.emoji || '•') + '</span><span class="bname">' + esc(b.name) + '</span>' +
     (set && !S.readOnly ? '<button class="bclear" data-action="clear-rating" data-bid="' + esc(b.id) + '" aria-label="Clear ' + esc(b.name) + ' rating">Clear</button>' : '') +
-    '<span class="bval num">' + (set ? val + '<small>/10</small>' : 'Not rated') + '</span></div>' +
-    '<input type="range" class="slider" min="1" max="10" step="1"' + (S.readOnly ? ' disabled' : '') + ' value="' + val + '" id="r_' + esc(b.id) + '" data-rate="' + esc(b.id) + '" aria-label="' + esc(b.name) + ', 1 ' + esc(b.lowLabel) + ' to 10 ' + esc(b.highLabel) + '">' +
+    '<span class="bval num">' + bvalHtml(b, v) + '</span></div>' +
+    '<input type="range" class="slider" min="1" max="10" step="1"' + (S.readOnly ? ' disabled' : '') + ' value="' + val + '" id="r_' + esc(b.id) + '" data-rate="' + esc(b.id) + '" aria-label="' + esc(b.name) + ', 1 ' + esc(b.lowLabel) + ' to 10 ' + esc(b.highLabel) + '"' + (set ? '' : ' aria-valuetext="Not rated"') + '>' +
     '<div class="blabels"><span>' + esc(b.lowLabel || 'Low') + '</span><span>' + esc(b.highLabel || 'High') + '</span></div></div>';
 }
+// Used only until base.css defines --b1..--b6 (light values; dark comes from the tokens).
+const B_FALLBACK = ['#D9480F', '#7048E8', '#0C8599', '#2F9E44', '#C2255C', '#E67700'];
 
 // Entry editing: every change is a merge patch on the day's doc, so edits from two people merge.
 // patch fields: ratings {bid: n|null}, tags {name: true|false}, photos {id: ts|null}, notes, walkMinutes, weight, meals.
@@ -145,6 +187,7 @@ export function patchToday() {
   if (!dog || S.view !== 'today' || !$('#summary')) return;
   const e = getEntry(dog.id, S.date) || {};
   const rs = ratingsOf(e);
+  const order = dogBehaviors(dog.id).map((x) => x.id);
   for (const card of $$('.bcard[data-bid]')) {
     const bid = card.dataset.bid, b = S.behaviors[bid];
     if (!b) continue;
@@ -154,7 +197,7 @@ export function patchToday() {
     const isSet = !card.classList.contains('unset');
     const curV = isSet ? Number(sl.value) : undefined;
     if ((typeof v === 'number') === isSet && (v === undefined || v === curV)) continue;
-    const wrap = document.createElement('div'); wrap.innerHTML = behaviorCard(b, v);
+    const wrap = document.createElement('div'); wrap.innerHTML = behaviorCard(b, v, Math.max(0, order.indexOf(bid)));
     card.replaceWith(wrap.firstElementChild);
   }
   const tags = tagsOf(e);
@@ -177,6 +220,7 @@ export function patchToday() {
   const mv = $('#mealsV'); if (mv) mv.textContent = e.meals != null ? e.meals : '–';
   const ph = $('#photoGrid'); if (ph) { const want = photosOf(e).join(','); if ((ph.dataset.ids !== want || ph.querySelector('.ph-missing')) && !S.uploading) ph.outerHTML = photoGridHtml(e); }
   const by = $('#byline'); if (by) by.textContent = byLine(e);
+  refreshPolaroid(e);
   updateTodayLive(dog);
 }
 
@@ -202,6 +246,7 @@ registerActions({
     const card = el.closest('.bcard');
     const b = S.behaviors[bid];
     if (card && b) { card.outerHTML = behaviorCard(b, undefined); }
+    const sl = $('#r_' + CSS.escape(bid)); if (sl) sl.focus({ preventScroll: true });
     updateTodayLive(dog);
   },
   'toggle-tag': (el) => {
@@ -210,6 +255,7 @@ registerActions({
     const t = {}; t[tg] = on ? Date.now() : false;
     if (!editEntry(dog, S.date, { tags: t })) return;
     el.setAttribute('aria-pressed', String(on));
+    refreshPolaroid(getEntry(dog.id, S.date) || {});
     if (!on && (settings().quickTags || []).indexOf(tg) < 0) render();
   },
   'add-tag': () => { S.addingTag = true; render(); const i = $('#tagNew'); if (i) i.focus(); },
@@ -275,7 +321,7 @@ registerPicks({
       const id = await savePhoto(f, dog.id, date);
       S.uploading = Math.max(0, S.uploading - 1);
       if (id) { const pp = {}; pp[id] = Date.now(); editEntry(dog, date, { photos: pp }, { now: true }); }
-      if (S.view === 'today') { const g = $('#photoGrid'); if (g) g.outerHTML = photoGridHtml(getEntry(dog.id, S.date) || {}); }
+      if (S.view === 'today') { const en = getEntry(dog.id, S.date) || {}; const g = $('#photoGrid'); if (g) g.outerHTML = photoGridHtml(en); refreshPolaroid(en); }
     }
   }
 });
@@ -289,15 +335,14 @@ document.addEventListener('input', (e) => {
     const r = {}; r[bid] = v;
     if (!editEntry(dog, S.date, { ratings: r })) { t.value = ratingsOf(getEntry(dog.id, S.date))[bid] || 5; return; }
     const card = t.closest('.bcard');
-    const g = (goodness(b, v) - 1) / 9;
-    card.style.setProperty('--c', valueColor(g));
-    card.style.setProperty('--p', ((v - 1) / 9 * 100).toFixed(1) + '%');
+    card.style.setProperty('--pf', ((v - 1) / 9).toFixed(3));
     if (card.classList.contains('unset')) {
       card.classList.remove('unset');
+      t.removeAttribute('aria-valuetext');
       const bv = card.querySelector('.bval');
       bv.insertAdjacentHTML('beforebegin', '<button class="bclear" data-action="clear-rating" data-bid="' + esc(bid) + '" aria-label="Clear ' + esc(b.name) + ' rating">Clear</button>');
     }
-    card.querySelector('.bval').innerHTML = v + '<small>/10</small>';
+    card.querySelector('.bval').innerHTML = bvalHtml(b, v);
     updateTodayLive(dog);
     if (navigator.vibrate) { try { navigator.vibrate(4); } catch (er) { /* ignore */ } }
   } else if (t.id === 'notes') {
