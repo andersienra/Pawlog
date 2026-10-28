@@ -1460,7 +1460,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
   // Firestore error -> the db error codes the app already handles.
   function fbErr(e) {
     const c = String((e && e.code) || '').replace(/^firestore\//, '');
-    if (c === 'permission-denied' || c === 'unauthenticated') { onAccessDenied(); return { code: 'revoked', message: 'permission-denied' }; }
+    if ((c === 'permission-denied' || c === 'unauthenticated') && !FB.signingOut) { onAccessDenied(); return { code: 'revoked', message: 'permission-denied' }; }
     const map = { 'not-found': 'invalid_argument', 'invalid-argument': 'invalid_argument', 'resource-exhausted': 'resource_exhausted' };
     return { code: map[c] || 'unavailable', message: (e && e.message) || c };
   }
@@ -1472,10 +1472,12 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
   };
   // Writes resolve when the server confirms. Offline, Firestore applies them to its local cache at once
   // and syncs later, so don't hold the per-document queue waiting for a confirmation that may take hours.
+  // A late rejection (after we stopped waiting) is still reported to the user.
   function fbAck(p) {
-    const guarded = p.catch((e) => { throw fbErr(e); });
-    if (navigator.onLine === false) { guarded.catch(() => {}); return Promise.race([guarded, sleep(800)]); }
-    return guarded;
+    let waiting = true;
+    const guarded = p.catch((e) => { const m = fbErr(e); if (!waiting) writeFailed(m, ''); throw m; });
+    guarded.catch(() => {});
+    return Promise.race([guarded, sleep(navigator.onLine === false ? 800 : 4000)]).finally(() => { waiting = false; });
   }
   // Removal conventions: a rating/photo set to null and a tag set to false become deleted fields.
   function fbLeaf(path, v) {
@@ -1528,17 +1530,32 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
       doc(id) { return fbDocRef(segs.concat(id || genId('x'))); },
       onSnapshot(next, err) {
         const t0 = Date.now();
-        let delivered = false;
-        return F.onSnapshot(F.collection(FB.fs, ...segs), (qs) => {
-          // A first, empty answer from an empty local cache isn't the real state yet; wait for the server.
-          if (!delivered && qs.metadata && qs.metadata.fromCache && qs.empty && navigator.onLine !== false && Date.now() - t0 < 5000) return;
-          delivered = true;
-          next({
+        let delivered = false, held = null, timer = null;
+        const emit = (qs) => { delivered = true; held = null; clearTimeout(timer); next(wrap(qs)); };
+        // includeMetadataChanges so the "now synced with the server" event arrives even when nothing changed
+        // (otherwise an empty collection answered from cache never gets a second event). Metadata-only
+        // events after the first delivery are dropped below.
+        const unsub = F.onSnapshot(F.collection(FB.fs, ...segs), { includeMetadataChanges: true }, (qs) => {
+          if (!delivered) {
+            // A first, empty answer from the local cache isn't the real state yet; wait (briefly) for the server.
+            if (qs.metadata && qs.metadata.fromCache && qs.empty && navigator.onLine !== false && Date.now() - t0 < 5000) {
+              held = qs;
+              if (!timer) timer = setTimeout(() => { if (!delivered && held) emit(held); }, Math.max(0, 5000 - (Date.now() - t0)));
+              return;
+            }
+            emit(qs); return;
+          }
+          if (!qs.docChanges().length) return;
+          emit(qs);
+        }, (e) => { clearTimeout(timer); if (err) err(fbErr(e)); });
+        return () => { clearTimeout(timer); unsub(); };
+        function wrap(qs) {
+          return {
             docs: qs.docs.map(fbSnap), size: qs.size, empty: qs.empty,
             docChanges: () => qs.docChanges().map((c) => ({ type: c.type, doc: fbSnap(c.doc), oldIndex: c.oldIndex, newIndex: c.newIndex })),
             metadata: { fromCache: !!(qs.metadata && qs.metadata.fromCache), hasPendingWrites: !!(qs.metadata && qs.metadata.hasPendingWrites) }
-          });
-        }, (e) => err && err(fbErr(e)));
+          };
+        }
       }
     };
   }
@@ -1625,7 +1642,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     const c = String((e && e.code) || '');
     if (/invalid-credential|wrong-password|user-not-found|invalid-login-credentials/.test(c)) return 'That email and password don’t match. Check them and try again, or reset your password.';
     if (/email-already-in-use/.test(c)) return 'There’s already an account with this email. Sign in instead.';
-    if (/weak-password/.test(c)) return 'Choose a stronger password: at least 6 characters.';
+    if (/weak-password|password-does-not-meet-requirements/.test(c)) return 'Choose a stronger password: at least 6 characters.';
     if (/invalid-email/.test(c)) return 'Enter a valid email address, like name@example.com.';
     if (/missing-password/.test(c)) return 'Enter your password.';
     if (/too-many-requests/.test(c)) return 'Too many attempts. Wait a few minutes, then try again.';
@@ -1682,7 +1699,14 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     if (FB.signingOut) return;
     FB.signingOut = true;
     flushPending();
-    const quiet = !writers.size;
+    // Writes Firestore hasn't confirmed live only in this device's cache; clearing it would lose them.
+    let quiet = false;
+    try {
+      const F = FB.m.firestore;
+      if (F.waitForPendingWrites && navigator.onLine !== false) quiet = await Promise.race([F.waitForPendingWrites(FB.fs).then(() => true, () => false), sleep(2500).then(() => false)]);
+    } catch (e) { quiet = false; }
+    quiet = quiet && !writers.size;
+    if (FB.unsubPeople) { try { FB.unsubPeople(); } catch (e) { /* ignore */ } }
     try { await FB.m.auth.signOut(FB.auth); } catch (e) { /* reload anyway */ }
     // Clear this device's cached copy of the logbook unless writes are still waiting to sync.
     if (quiet && FB.m.firestore.terminate) {
