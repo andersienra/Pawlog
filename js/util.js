@@ -77,9 +77,10 @@ export const DEFAULT_BEHAVIORS = [
   ['Anxiety', '😟', 'Relaxed', 'Very anxious', false],
   ['Appetite', '🍖', "Wouldn't eat", 'Ate everything', true],
   ['Sociability', '🐕', 'Kept to self', 'Super friendly', true],
-  ['Potty accidents', '💧', 'None', 'Many', false],
   ['Overall mood', '😊', 'Rough day', 'Best day ever', true]
 ];
+// Per-behavior colour, cycling through the six --b1..--b6 tokens by behavior order (index 0 -> --b1).
+export const behaviorColor = (index) => 'var(--b' + ((((Number(index) || 0) % 6) + 6) % 6 + 1) + ')';
 export const DEFAULT_TAGS = ['Great walk', 'Zoomies', 'Barked at mailman', 'Ate something bad', 'Vet visit', 'Met a new dog', 'Training session', 'Bath day', 'Chewed something', 'Slept a lot'];
 export const EVENT_TYPES = {
   vet: { label: 'Vet visit', icon: '🩺' },

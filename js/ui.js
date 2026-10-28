@@ -28,12 +28,12 @@ export function ensureHeadMeta() {
   add('mobile-web-app-capable', 'yes');
   add('apple-mobile-web-app-title', 'Pawlog');
   add('apple-mobile-web-app-status-bar-style', 'default');
-  add('theme-color', '#F3F5EF');
+  add('theme-color', '#FFF4DE');
   if (!document.head.querySelector('link[rel="apple-touch-icon"]')) {
     const c = document.createElement('canvas'); c.width = c.height = 180;
     const x = c.getContext('2d');
-    x.fillStyle = '#1D6A55'; x.fillRect(0, 0, 180, 180);
-    x.fillStyle = '#fff';
+    x.fillStyle = '#FFD25A'; x.fillRect(0, 0, 180, 180);
+    x.fillStyle = '#2B1B0E';
     const el = (cx, cy, rx, ry) => { x.beginPath(); x.ellipse(cx * 2.8125, cy * 2.8125, rx * 2.8125, ry * 2.8125, 0, 0, Math.PI * 2); x.fill(); };
     el(32, 42, 13, 11); el(15, 27, 6, 7.5); el(25, 15, 6, 8); el(39, 15, 6, 8); el(49, 27, 6, 7.5);
     try { const l = document.createElement('link'); l.rel = 'apple-touch-icon'; l.href = c.toDataURL('image/png'); document.head.appendChild(l); } catch (e) { /* ignore */ }
@@ -219,7 +219,7 @@ export function drawLightbox() {
   const el = $('#lightbox');
   if (!LB) { el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
   const it = LB.items[LB.idx];
-  el.innerHTML = '<div class="lb-top"><span class="small" style="opacity:.8">' + (LB.idx + 1) + ' / ' + LB.items.length + '</span><button class="icon-btn" data-action="lb-close" aria-label="Close">' + I.x + '</button></div>' +
+  el.innerHTML = '<div class="lb-top"><span class="lb-count">' + (LB.idx + 1) + ' of ' + LB.items.length + '</span><button class="icon-btn" data-action="lb-close" aria-label="Close">' + I.x + '</button></div>' +
     '<div class="lb-img"><img id="lbImg" src="' + esc(S.photoFull[it.id] || photoSrc(it.id)) + '" alt="Photo"></div>' +
     '<div class="lb-bot"><button class="icon-btn" data-action="lb-nav" data-d="-1" aria-label="Previous"' + (LB.idx === 0 ? ' disabled' : '') + '>' + I.chevL + '</button><span>' + esc(it.date ? fmt(it.date, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' }) : '') + '</span>' +
     '<button class="icon-btn" data-action="lb-nav" data-d="1" aria-label="Next"' + (LB.idx === LB.items.length - 1 ? ' disabled' : '') + '>' + I.chevR + '</button></div>';
