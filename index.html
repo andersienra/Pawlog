@@ -1587,7 +1587,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     app.innerHTML = '<div class="welcome"><div class="mark">' + PAW + '</div><h1>This account isn’t on the Pawlog access list</h1>' +
       '<p>You’re signed in as <b class="copyable">' + esc(email) + '</b>. Only the people the owner has added can open this logbook.</p>' +
       '<p>Ask the owner to add this email, then try again. Or sign out and use a different account.</p></div>' +
-      '<div class="form" style="margin-top:18px"><button class="btn block" data-action="reload">Try again</button><button class="btn block ghost" data-action="sign-out">Sign out</button></div>';
+      '<div class="form" style="margin-top:18px"><button class="btn block" data-action="reload">Try again</button><button class="btn block ghost" data-action="sign-out-now">Sign out</button></div>';
   }
 
   /* ---------- Sign-in screen ---------- */
@@ -2979,6 +2979,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
       const c = await confirmDialog({ title: 'Sign out?', body: 'You’ll need your email and password to sign back in on this device.', ok: 'Sign out', danger: true });
       if (c === 1) fbSignOut();
     },
+    'sign-out-now': () => fbSignOut(),
     'reload': () => { try { location.reload(); } catch (e) { /* ignore */ } },
     'clear-search': () => { S.search = ''; render(); const n = $('#histSearch'); if (n) n.focus(); },
     'more-history': () => { S.histLimit += 30; render(); },
