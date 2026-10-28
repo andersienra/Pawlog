@@ -643,6 +643,11 @@ body.ro [data-action="add-dog"], body.ro [data-action="add-behavior"], body.ro [
 body.ro [data-form="quicktag"], body.ro label[for="jsonPick"], body.ro [data-action="add-event"], body.ro .av-wrap .cam,
 body.ro [data-action="unarchive-behavior"], body.ro [data-action="clear-day"], body.ro [data-action="set-size"] { display: none !important; }
 body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
+.auth-msg { margin: 0; font-size: 15px; padding: 10px 12px; border-radius: 12px; }
+.auth-msg.err { background: color-mix(in oklab, var(--bad) 13%, var(--surface)); color: var(--bad); }
+.auth-msg.ok { background: var(--accent-soft); color: var(--accent); }
+.auth-head h1 { font-size: 34px; }
+.welcome p b { overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
@@ -663,6 +668,18 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
 <script>
 (function () {
   'use strict';
+
+  /* =========================================================
+     FIREBASE CONFIG — paste your Firebase web app config here to sync
+     between phones. Leave as null to keep everything on this device.
+     Example:
+       const FIREBASE_CONFIG = {
+         apiKey: "…", authDomain: "your-project.firebaseapp.com",
+         projectId: "your-project", appId: "…"
+       };
+     ========================================================= */
+  const FIREBASE_CONFIG = null;
+  const FIREBASE_SDK_VERSION = '10.14.1';
 
   /* =========================================================
      Utilities
@@ -1096,6 +1113,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
   let roProbe = false;
   function writeFailed(e, col) {
     const c = e && e.code;
+    if (S.accessDenied) return;
     let msg = "Couldn't save your change. Check your connection and try again.";
     if (c === 'quota_exceeded') msg = 'Storage is full. Delete old photos or entries to make room.';
     else if (c === 'invalid_argument') {
@@ -1159,6 +1177,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
         if (S.ready && touched) scheduleRender({ todayEntry: todayTouched, col: col });
       }, (err) => {
         const c = err && err.code;
+        if (S.accessDenied) { if (!seen.has(col)) seen.add(col); return; }
         if ((c === 'unavailable' || !c) && attempt < 4) setTimeout(() => subscribe(col, seen, attempt + 1), 1500 * (attempt + 1));
         else if (c === 'revoked') toast('Sync is no longer available on this page.', true);
         else toast('Live sync stopped. Reload the page to reconnect.', true);
@@ -1415,6 +1434,291 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
   }
 
   /* =========================================================
+     Firebase backend (standalone / GitHub Pages build)
+     Exposes the same `db` + `user` interface as the claude.ai runtime,
+     so the write queue, merge patches, live sync and attribution above
+     work unchanged. Data lives at pawlog/main/<collection>/<id>.
+     ========================================================= */
+  const FB = { m: null, app: null, auth: null, fs: null, user: null, people: {}, peopleReady: null, pendingName: '', unsubPeople: null };
+  async function loadFirebase() {
+    // Test hook: a page may provide its own loader that returns { app, auth, firestore } module objects.
+    if (typeof window.__pawlogFirebaseLoader === 'function') return await window.__pawlogFirebaseLoader();
+    const base = 'https://www.gstatic.com/firebasejs/' + FIREBASE_SDK_VERSION + '/';
+    const r = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+    return { app: r[0], auth: r[1], firestore: r[2] };
+  }
+  // Firestore error -> the db error codes the app already handles.
+  function fbErr(e) {
+    const c = String((e && e.code) || '').replace(/^firestore\//, '');
+    if (c === 'permission-denied' || c === 'unauthenticated') { onAccessDenied(); return { code: 'revoked', message: 'permission-denied' }; }
+    const map = { 'not-found': 'invalid_argument', 'invalid-argument': 'invalid_argument', 'resource-exhausted': 'resource_exhausted' };
+    return { code: map[c] || 'unavailable', message: (e && e.message) || c };
+  }
+  const fbSnap = (s) => {
+    const ex = typeof s.exists === 'function' ? s.exists() : !!s.exists;
+    const d = ex ? s.data() : undefined;
+    const md = s.metadata || {};
+    return { id: s.id, exists: ex, data: () => d, metadata: { fromCache: !!md.fromCache, hasPendingWrites: !!md.hasPendingWrites } };
+  };
+  // Writes resolve when the server confirms. Offline, Firestore applies them to its local cache at once
+  // and syncs later, so don't hold the per-document queue waiting for a confirmation that may take hours.
+  function fbAck(p) {
+    const guarded = p.catch((e) => { throw fbErr(e); });
+    if (navigator.onLine === false) { guarded.catch(() => {}); return Promise.race([guarded, sleep(800)]); }
+    return guarded;
+  }
+  // Removal conventions: a rating/photo set to null and a tag set to false become deleted fields.
+  function fbLeaf(path, v) {
+    const F = FB.m.firestore;
+    if (v === null && path.length === 2 && (path[0] === 'ratings' || path[0] === 'photos')) return F.deleteField();
+    if (v === false && path.length === 2 && path[0] === 'tags') return F.deleteField();
+    return v;
+  }
+  function fbFlatten(obj, path, out) {
+    for (const k in obj) {
+      const v = obj[k], p = path.concat(k);
+      if (v === undefined) continue;
+      if (isPlainObj(v) && Object.keys(v).length) fbFlatten(v, p, out);
+      else out.push([p, v]);
+    }
+    return out;
+  }
+  function fbDocRef(segs) {
+    const F = FB.m.firestore;
+    const ref = F.doc(FB.fs, ...segs);
+    return {
+      id: segs[segs.length - 1], path: segs.join('/'),
+      async get() {
+        try { return fbSnap(await F.getDoc(ref)); }
+        catch (e) {
+          const m = fbErr(e);
+          if (m.code !== 'unavailable') throw m;
+          try { return fbSnap(await F.getDocFromCache(ref)); } catch (e2) { return { id: ref.id, exists: false, data: () => undefined, metadata: { fromCache: true, hasPendingWrites: false } }; }
+        }
+      },
+      set(d) { return fbAck(F.setDoc(ref, clone(d))); },
+      // Same contract as the claude db: deep merge into an existing doc, reject when it's missing.
+      // Each leaf is written by its own field path, so sibling keys written by someone else survive.
+      update(d) {
+        const pairs = fbFlatten(clone(d), [], []);
+        if (!pairs.length) return Promise.resolve();
+        const args = [];
+        for (const [p, v] of pairs) args.push(new F.FieldPath(...p), fbLeaf(p, v));
+        return fbAck(F.updateDoc(ref, args[0], args[1], ...args.slice(2)));
+      },
+      delete() { return fbAck(F.deleteDoc(ref)); },
+      onSnapshot(next, err) { return F.onSnapshot(ref, (s) => next(fbSnap(s)), (e) => err && err(fbErr(e))); },
+      collection(sub) { return fbColRef(segs.concat(sub)); }
+    };
+  }
+  function fbColRef(segs) {
+    const F = FB.m.firestore;
+    return {
+      path: segs.join('/'),
+      doc(id) { return fbDocRef(segs.concat(id || genId('x'))); },
+      onSnapshot(next, err) {
+        const t0 = Date.now();
+        let delivered = false;
+        return F.onSnapshot(F.collection(FB.fs, ...segs), (qs) => {
+          // A first, empty answer from an empty local cache isn't the real state yet; wait for the server.
+          if (!delivered && qs.metadata && qs.metadata.fromCache && qs.empty && navigator.onLine !== false && Date.now() - t0 < 5000) return;
+          delivered = true;
+          next({
+            docs: qs.docs.map(fbSnap), size: qs.size, empty: qs.empty,
+            docChanges: () => qs.docChanges().map((c) => ({ type: c.type, doc: fbSnap(c.doc), oldIndex: c.oldIndex, newIndex: c.newIndex })),
+            metadata: { fromCache: !!(qs.metadata && qs.metadata.fromCache), hasPendingWrites: !!(qs.metadata && qs.metadata.hasPendingWrites) }
+          });
+        }, (e) => err && err(fbErr(e)));
+      }
+    };
+  }
+  const fbDb = {
+    doc(path) { return fbDocRef(path.split('/')); },
+    collection(path) { return fbColRef(path.split('/')); }
+  };
+  // Names come from pawlog/main/people/<uid> = { name, email } (stored ids elsewhere, names resolved here).
+  const fbUser = {
+    id: async () => (FB.user ? FB.user.uid : null),
+    can: async (n) => (n === 'data.write' ? true : null),
+    isOwner: async () => false,
+    canEdit: async () => false,
+    async profiles(ids) {
+      await FB.peopleReady;
+      const out = {};
+      [].concat(ids).forEach((id) => {
+        const p = FB.people[id] || {};
+        out[id] = { id: id, name: p.name || '', avatarUrl: '', color: '#888888', email: p.email || null, isMe: !!(FB.user && FB.user.uid === id), guest: false };
+      });
+      return out;
+    }
+  };
+  function fbSubscribePeople() {
+    const F = FB.m.firestore;
+    let resolve; FB.peopleReady = new Promise((r) => { resolve = r; setTimeout(r, 4000); });
+    FB.unsubPeople = F.onSnapshot(F.collection(FB.fs, 'pawlog', 'main', 'people'), (qs) => {
+      let changed = false;
+      for (const c of qs.docChanges()) {
+        const d = c.type === 'removed' ? null : c.doc.data();
+        const before = JSON.stringify(FB.people[c.doc.id] || null);
+        if (d) FB.people[c.doc.id] = { name: String(d.name || ''), email: String(d.email || '') }; else delete FB.people[c.doc.id];
+        if (JSON.stringify(FB.people[c.doc.id] || null) !== before) { delete S.names[c.doc.id]; changed = true; }
+      }
+      resolve();
+      if (changed && S.ready) scheduleRender({});
+    }, (e) => { resolve(); fbErr(e); });
+  }
+  async function fbWritePerson(u) {
+    const F = FB.m.firestore;
+    const name = (FB.pendingName || u.displayName || '').trim() || String(u.email || '').split('@')[0];
+    FB.pendingName = '';
+    try { await F.setDoc(F.doc(FB.fs, 'pawlog', 'main', 'people', u.uid), { name: name, email: u.email || '', updatedAt: Date.now() }, { merge: true }); }
+    catch (e) { fbErr(e); }
+  }
+
+  function onAccessDenied() {
+    if (S.accessDenied) return;
+    S.accessDenied = true;
+    renderDenied();
+  }
+  function renderDenied() {
+    $('#tabs').hidden = true;
+    const app = $('#app'); app.classList.add('no-tabs');
+    const email = FB.user && FB.user.email ? FB.user.email : '';
+    app.innerHTML = '<div class="welcome"><div class="mark">' + PAW + '</div><h1>This account isn’t on the Pawlog access list</h1>' +
+      '<p>You’re signed in as <b class="copyable">' + esc(email) + '</b>. Only the people the owner has added can open this logbook.</p>' +
+      '<p>Ask the owner to add this email, then try again. Or sign out and use a different account.</p></div>' +
+      '<div class="form" style="margin-top:18px"><button class="btn block" data-action="reload">Try again</button><button class="btn block ghost" data-action="sign-out">Sign out</button></div>';
+  }
+
+  /* ---------- Sign-in screen ---------- */
+  const AUTH = { mode: 'signin', busy: false, error: '', info: '', email: '', name: '' };
+  function renderAuth() {
+    $('#tabs').hidden = true;
+    const app = $('#app'); app.classList.add('no-tabs');
+    const m = AUTH.mode;
+    const title = m === 'create' ? 'Create your account' : m === 'reset' ? 'Reset your password' : 'Welcome back';
+    const lead = m === 'reset' ? 'Enter your email and we’ll send you a link to choose a new password.' : 'Sign in to share your dog’s daily log with the people who help look after them.';
+    app.innerHTML = '<div class="welcome auth-head"><div class="mark">' + PAW + '</div><h1>' + esc(title) + '</h1><p>' + esc(lead) + '</p></div>' +
+      '<form class="form panel pad" data-form="auth" novalidate style="margin-top:16px">' +
+      (m !== 'reset' ? '<div class="seg" role="group" aria-label="Account"><button type="button" data-action="auth-mode" data-m="signin" aria-pressed="' + (m === 'signin') + '">Sign in</button><button type="button" data-action="auth-mode" data-m="create" aria-pressed="' + (m === 'create') + '">Create account</button></div>' : '') +
+      (m === 'create' ? '<label class="field"><span>Your name</span><input class="input" id="au_name" name="name" autocomplete="name" maxlength="40" required placeholder="e.g. Ander" value="' + esc(AUTH.name) + '"></label>' : '') +
+      '<label class="field"><span>Email</span><input class="input" id="au_email" name="email" type="email" inputmode="email" autocomplete="' + (m === 'create' ? 'email' : 'username') + '" autocapitalize="none" spellcheck="false" required value="' + esc(AUTH.email) + '"></label>' +
+      (m !== 'reset' ? '<label class="field"><span>Password</span><input class="input" id="au_pw" name="password" type="password" autocomplete="' + (m === 'create' ? 'new-password' : 'current-password') + '" minlength="6" required' + (m === 'create' ? ' placeholder="At least 6 characters"' : '') + '></label>' : '') +
+      '<p class="auth-msg err" id="authErr" role="alert"' + (AUTH.error ? '' : ' hidden') + '>' + esc(AUTH.error) + '</p>' +
+      '<p class="auth-msg ok" id="authInfo" role="status"' + (AUTH.info ? '' : ' hidden') + '>' + esc(AUTH.info) + '</p>' +
+      '<button class="btn block" type="submit" id="authGo"' + (AUTH.busy ? ' disabled' : '') + '>' + (m === 'create' ? 'Create account' : m === 'reset' ? 'Send reset link' : 'Sign in') + '</button>' +
+      (m === 'signin' ? '<button type="button" class="linkbtn" style="align-self:center" data-action="auth-mode" data-m="reset">Forgot password?</button>' : '') +
+      (m === 'reset' ? '<button type="button" class="linkbtn" style="align-self:center" data-action="auth-mode" data-m="signin">' + I.chevL + 'Back to sign in</button>' : '') +
+      '</form><p class="foot">You stay signed in on this device until you sign out.</p>';
+  }
+  function authMsg(e) {
+    const c = String((e && e.code) || '');
+    if (/invalid-credential|wrong-password|user-not-found|invalid-login-credentials/.test(c)) return 'That email and password don’t match. Check them and try again, or reset your password.';
+    if (/email-already-in-use/.test(c)) return 'There’s already an account with this email. Sign in instead.';
+    if (/weak-password/.test(c)) return 'Choose a stronger password: at least 6 characters.';
+    if (/invalid-email/.test(c)) return 'Enter a valid email address, like name@example.com.';
+    if (/missing-password/.test(c)) return 'Enter your password.';
+    if (/too-many-requests/.test(c)) return 'Too many attempts. Wait a few minutes, then try again.';
+    if (/network-request-failed/.test(c)) return 'Can’t reach the server. Check your connection and try again.';
+    if (/operation-not-allowed|admin-restricted-operation/.test(c)) return 'New accounts are turned off for this Pawlog. Ask the owner to create one for you.';
+    if (/user-disabled/.test(c)) return 'This account has been turned off. Ask the owner.';
+    return 'Something went wrong' + (c ? ' (' + c + ')' : '') + '. Try again.';
+  }
+  function setAuthMsg(err, info) {
+    AUTH.error = err || ''; AUTH.info = info || '';
+    const e = $('#authErr'), i = $('#authInfo');
+    if (e) { e.textContent = AUTH.error; e.hidden = !AUTH.error; }
+    if (i) { i.textContent = AUTH.info; i.hidden = !AUTH.info; }
+  }
+  async function submitAuth(form) {
+    const A2 = FB.m.auth;
+    const fd = new FormData(form);
+    const email = String(fd.get('email') || '').trim();
+    const pw = String(fd.get('password') || '');
+    const name = String(fd.get('name') || '').trim();
+    AUTH.email = email; AUTH.name = name;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setAuthMsg(authMsg({ code: 'auth/invalid-email' })); $('#au_email').focus(); return; }
+    if (AUTH.mode === 'create' && !name) { setAuthMsg('Enter your name so the other person knows who logged what.'); $('#au_name').focus(); return; }
+    if (AUTH.mode !== 'reset' && !pw) { setAuthMsg(authMsg({ code: 'auth/missing-password' })); $('#au_pw').focus(); return; }
+    const btn = $('#authGo'); AUTH.busy = true; if (btn) { btn.disabled = true; btn.textContent = AUTH.mode === 'reset' ? 'Sending…' : AUTH.mode === 'create' ? 'Creating account…' : 'Signing in…'; }
+    setAuthMsg('', '');
+    try {
+      if (AUTH.mode === 'reset') {
+        try { await A2.sendPasswordResetEmail(FB.auth, email); }
+        catch (e) { if (!/user-not-found/.test(String(e && e.code))) throw e; }
+        AUTH.busy = false; AUTH.mode = 'signin'; renderAuth();
+        setAuthMsg('', 'If there’s an account for ' + email + ', a reset link is on its way. Check your inbox and spam folder.');
+        return;
+      }
+      if (AUTH.mode === 'create') {
+        FB.pendingName = name;
+        const cred = await A2.createUserWithEmailAndPassword(FB.auth, email, pw);
+        try { await A2.updateProfile(cred.user, { displayName: name }); } catch (e) { /* the people doc still carries the name */ }
+        if (FB.user && FB.user.uid === cred.user.uid) fbWritePerson(Object.assign({}, cred.user, { displayName: name }));
+      } else {
+        await A2.signInWithEmailAndPassword(FB.auth, email, pw);
+      }
+      AUTH.busy = false; AUTH.error = ''; AUTH.info = '';
+      // onAuthStateChanged takes it from here.
+    } catch (e) {
+      FB.pendingName = '';
+      AUTH.busy = false;
+      if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = AUTH.mode === 'create' ? 'Create account' : AUTH.mode === 'reset' ? 'Send reset link' : 'Sign in'; }
+      setAuthMsg(authMsg(e));
+      if (/email-already-in-use/.test(String(e && e.code))) { AUTH.mode = 'signin'; renderAuth(); setAuthMsg(authMsg(e)); }
+    }
+  }
+  async function fbSignOut() {
+    flushPending();
+    const quiet = !writers.size;
+    try { await FB.m.auth.signOut(FB.auth); } catch (e) { /* reload anyway */ }
+    // Clear this device's cached copy of the logbook unless writes are still waiting to sync.
+    if (quiet && FB.m.firestore.terminate) {
+      try { await FB.m.firestore.terminate(FB.fs); await FB.m.firestore.clearIndexedDbPersistence(FB.fs); } catch (e) { /* ignore */ }
+    }
+    try { location.reload(); } catch (e) { /* ignore */ }
+  }
+  function renderFbLoadError(msg) {
+    $('#tabs').hidden = true;
+    $('#app').innerHTML = '<div class="welcome"><div class="mark">' + PAW + '</div><h1>Can’t connect</h1><p>' + esc(msg) + '</p></div><div class="form" style="margin-top:18px"><button class="btn block" data-action="reload">Try again</button></div>';
+  }
+
+  async function startFirebase(cfg) {
+    S.backend = 'firebase';
+    let m;
+    try { m = await loadFirebase(); }
+    catch (e) { renderFbLoadError('Pawlog couldn’t load its sync service. Check your connection, then try again.'); return; }
+    FB.m = m;
+    try {
+      FB.app = m.app.initializeApp(cfg);
+      try {
+        FB.auth = m.auth.initializeAuth(FB.app, { persistence: [m.auth.indexedDBLocalPersistence, m.auth.browserLocalPersistence] });
+      } catch (e) { FB.auth = m.auth.getAuth(FB.app); }
+      try {
+        FB.fs = m.firestore.initializeFirestore(FB.app, { ignoreUndefinedProperties: true, localCache: m.firestore.persistentLocalCache({ tabManager: m.firestore.persistentMultipleTabManager() }) });
+      } catch (e) { FB.fs = m.firestore.getFirestore(FB.app); }
+    } catch (e) {
+      renderFbLoadError('Pawlog’s sync settings look wrong. Check FIREBASE_CONFIG.');
+      return;
+    }
+    m.auth.onAuthStateChanged(FB.auth, (u) => {
+      if (!u) {
+        if (FB.user) { try { location.reload(); } catch (e) { /* ignore */ } return; }
+        renderAuth();
+        return;
+      }
+      if (FB.user && FB.user.uid === u.uid) return;
+      FB.user = u;
+      S.me = u.uid; S.user = fbUser; S.canWrite = true;
+      fbSubscribePeople();
+      fbWritePerson(u);
+      $('#app').innerHTML = '<div class="loading"><div>' + PAW.replace('<svg', '<svg class="paw"') + 'Opening your logbook…</div></div>';
+      startDb(fbDb);
+      wantNames([u.uid]);
+    });
+  }
+
+  /* =========================================================
      Theme
      ========================================================= */
   function applyTheme(t) {
@@ -1608,6 +1912,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
   }
 
   function render() {
+    if (S.accessDenied) { renderDenied(); return; }
     if (!S.ready) return;
     const app = $('#app'), tabs = $('#tabs');
     const dog = curDog();
@@ -2393,7 +2698,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
       h += '<section><div class="group-label"><span>Shared with</span><span class="aside">' + plural(ppl.length, 'person', 'people') + '</span></div><div class="panel pad people">' +
         '<div class="faces">' + ppl.slice(0, 8).map((id) => '<span class="face" title="' + esc(personName(id)) + '">' + esc((personName(id)[0] || '?').toUpperCase()) + (S.avatars[id] ? '<img src="' + esc(S.avatars[id]) + '" alt="" onerror="this.remove()">' : '') + '</span>').join('') + '</div>' +
         '<div class="names">' + ppl.map((id) => '<span>' + esc(id === S.me ? 'You' + (S.names[id] ? ' (' + S.names[id] + ')' : '') : personName(id)) + '</span>').join('') + '</div>' +
-        '<p class="small muted" style="margin:10px 0 0">' + (others.length ? 'Everyone here sees the same logs, live.' : 'To log together, share this page from the Share menu and give the other person Editor access.') + ' People appear here once they’ve logged something.</p>' +
+        '<p class="small muted" style="margin:10px 0 0">' + (others.length ? 'Everyone here sees the same logs, live.' : (S.backend === 'firebase' ? 'To log together, have the other person create an account here. The owner adds their email to the access list.' : 'To log together, share this page from the Share menu and give the other person Editor access.')) + ' People appear here once they’ve logged something.</p>' +
         (S.readOnly ? '<p class="small" style="margin:8px 0 0;color:var(--warn)">You have view-only access.</p>' : '') + '</div></section>';
     }
 
@@ -2422,12 +2727,16 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
 
     h += '<section><div class="group-label"><span>Appearance</span></div><div class="seg" role="group" aria-label="Theme">' + [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => '<button data-action="theme" data-t="' + v + '" aria-pressed="' + ((s.theme || 'system') === v) + '">' + l + '</button>').join('') + '</div></section>';
 
-    const where = S.mode === 'db' ? 'Synced live for everyone with access to this page. Open it on any device to see the same logs.' : 'Saved in this browser only. Export a backup regularly, and import it on another device.';
+    const where = S.backend === 'firebase' ? 'Synced live between everyone signed in to this Pawlog, and kept on this device so it works with a spotty connection.' : S.mode === 'db' ? 'Synced live for everyone with access to this page. Open it on any device to see the same logs.' : 'Saved in this browser only. Export a backup regularly, and import it on another device.';
     h += '<section><div class="group-label"><span>Your data</span></div><div class="panel rows">' +
       '<button class="row" data-action="export-json">' + I.download.replace('<svg', '<svg style="width:22px;height:22px;color:var(--accent)"') + '<span class="grow"><div class="t">Export backup</div><div class="s">JSON, includes everything</div></span></button>' +
       '<button class="row" data-action="export-csv">' + I.download.replace('<svg', '<svg style="width:22px;height:22px;color:var(--accent)"') + '<span class="grow"><div class="t">Export spreadsheet</div><div class="s">CSV, one row per logged day</div></span></button>' +
       '<label class="row tap" for="jsonPick" style="cursor:pointer">' + I.upload.replace('<svg', '<svg style="width:22px;height:22px;color:var(--accent)"') + '<span class="grow"><div class="t">Import backup</div><div class="s">From a Pawlog JSON file</div></span></label>' +
       '</div><p class="small muted" style="margin:8px 4px 0;display:flex;gap:6px;align-items:flex-start">' + esc(where) + '</p></section>';
+    if (S.backend === 'firebase' && FB.user) {
+      h += '<section><div class="group-label"><span>Account</span></div><div class="panel rows"><div class="row"><span class="grow"><div class="s">Signed in as</div><div class="t copyable">' + esc(FB.user.email || '') + '</div></span></div>' +
+        '<button class="row" data-action="sign-out" style="color:var(--bad);font-weight:600">Sign out</button></div></section>';
+    }
     const counts = Object.values(S.entries).filter(isLogged).length;
     h += '<p class="foot">Pawlog · ' + plural(dogs.length, 'dog') + ' · ' + plural(counts, 'day') + ' logged</p></div>';
     return h;
@@ -2665,6 +2974,12 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     'lb-close': () => { LB = null; drawLightbox(); },
     'lb-nav': (el) => { if (!LB) return; LB.idx = clamp(LB.idx + Number(el.dataset.d), 0, LB.items.length - 1); drawLightbox(); },
     'month': (el) => { const [y, m] = S.histMonth.split('-').map(Number); const d = new Date(y, m - 1 + Number(el.dataset.d), 1); const nm = d.getFullYear() + '-' + pad(d.getMonth() + 1); if (nm <= todayStr().slice(0, 7)) { S.histMonth = nm; render(); } },
+    'auth-mode': (el) => { const em = $('#au_email'); if (em) AUTH.email = em.value; const nm = $('#au_name'); if (nm) AUTH.name = nm.value; AUTH.mode = el.dataset.m; AUTH.error = ''; AUTH.info = ''; renderAuth(); const f = $(AUTH.mode === 'create' ? '#au_name' : '#au_email'); if (f && !f.value) f.focus(); },
+    'sign-out': async () => {
+      const c = await confirmDialog({ title: 'Sign out?', body: 'You’ll need your email and password to sign back in on this device.', ok: 'Sign out', danger: true });
+      if (c === 1) fbSignOut();
+    },
+    'reload': () => { try { location.reload(); } catch (e) { /* ignore */ } },
     'clear-search': () => { S.search = ''; render(); const n = $('#histSearch'); if (n) n.focus(); },
     'more-history': () => { S.histLimit += 30; render(); },
     'range': (el) => { S.insRange = el.dataset.r; render(); },
@@ -2830,6 +3145,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     const kind = f.dataset && f.dataset.form;
     if (!kind) return;
     e.preventDefault();
+    if (kind === 'auth') { if (!AUTH.busy) submitAuth(f); return; }
     if (kind === 'dog-new' || kind === 'dog-add') {
       const d = readDogForm(f);
       if (!d.name) { toast('Give your dog a name first.', true); $('#f_name', f).focus(); return; }
@@ -2898,13 +3214,14 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
   async function init() {
     applyTheme(lsGet(LS_THEME) || 'system');
     ensureHeadMeta();
-    if (!hasClaude()) { startLocal('standalone'); return; }
+    const fbCfg = (typeof window.__PAWLOG_FIREBASE_CONFIG !== 'undefined') ? window.__PAWLOG_FIREBASE_CONFIG : FIREBASE_CONFIG;
+    if (!hasClaude()) { if (fbCfg) startFirebase(fbCfg); else startLocal('standalone'); return; }
     let db = null, user = null;
     try {
       const r = await Promise.all([window.claude.use('db').catch(() => null), window.claude.use('user').catch(() => null)]);
       db = r[0]; user = r[1];
     } catch (e) { db = null; }
-    if (!db) { startLocal('nodb'); return; }
+    if (!db) { if (fbCfg) startFirebase(fbCfg); else startLocal('nodb'); return; }
     S.user = user || null;
     let uid = null;
     try { uid = user ? await user.id() : null; } catch (e) { uid = null; }
