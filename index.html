@@ -1385,7 +1385,10 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
       try {
         await withRetry(() => ROOT.collection('photofull').doc(id).set({ dataUrl: full.d, dogId: meta.dogId, createdAt: meta.createdAt, createdBy: meta.createdBy }));
       } catch (e) { writeFailed(e, 'photofull'); delete S.photoFull[id]; return null; }
-      Store.put('photos', id, meta);
+      // Wait for the thumbnail doc too, so other phones never see the day's reference before the photo itself.
+      S.photos[id] = meta;
+      try { await withRetry(() => ROOT.collection('photos').doc(id).set(meta)); existing.add('photos/' + id); lastWritten.set('photos/' + id, JSON.stringify(meta)); }
+      catch (e) { writeFailed(e, 'photos'); delete S.photos[id]; delete S.photoFull[id]; return null; }
     } else {
       S.photos[id] = meta; localSave('photos');
       localSave('photoFull');
@@ -1676,6 +1679,8 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     }
   }
   async function fbSignOut() {
+    if (FB.signingOut) return;
+    FB.signingOut = true;
     flushPending();
     const quiet = !writers.size;
     try { await FB.m.auth.signOut(FB.auth); } catch (e) { /* reload anyway */ }
@@ -1710,6 +1715,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
     }
     m.auth.onAuthStateChanged(FB.auth, (u) => {
       if (!u) {
+        if (FB.signingOut) return; // fbSignOut reloads once when it's done
         if (FB.user) { try { location.reload(); } catch (e) { /* ignore */ } return; }
         renderAuth();
         return;
@@ -1905,7 +1911,7 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
       if (el && el !== document.activeElement) { const want = e[key] != null ? String(e[key]) : ''; if (el.value !== want) el.value = want; }
     }
     const mv = $('#mealsV'); if (mv) mv.textContent = e.meals != null ? e.meals : '–';
-    const ph = $('#photoGrid'); if (ph) { const want = photosOf(e).join(','); if (ph.dataset.ids !== want && !S.uploading) ph.outerHTML = photoGridHtml(e); }
+    const ph = $('#photoGrid'); if (ph) { const want = photosOf(e).join(','); if ((ph.dataset.ids !== want || ph.querySelector('.ph-missing')) && !S.uploading) ph.outerHTML = photoGridHtml(e); }
     const by = $('#byline'); if (by) by.textContent = byLine(e);
     updateTodayLive(dog);
   }
