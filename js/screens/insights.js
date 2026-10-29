@@ -1,6 +1,10 @@
-// Insights screen: tiles, wellbeing/weight line charts, consistency, behavior trends, weekday chart, tags.
+// Insights screen: tiles, wellbeing/weight line charts, consistency, behavior trends, weekday chart, tags,
+// plus "through the day" (moments by hour + activity strip), "what changes it" (before/after activities)
+// and training (sessions, drills, needs practice). The number crunching lives in ../analytics.js.
 import { registerActions, registerScreen } from '../registry.js';
+import * as ST from '../state.js';
 import { S, dogBehaviors, dogEntries, entryScore, ratingsOf, streakFor, tagsOf } from '../state.js';
+import * as AN from '../analytics.js';
 import { render } from '../ui.js';
 import { $, $$, addDays, clamp, diffDays, esc, firstDayOfWeek, fmt, pd, plural, round1, todayStr } from '../util.js';
 
@@ -57,9 +61,12 @@ export function renderInsights(dog) {
   let h = '<header class="topbar ins-top"><h1>How ' + esc(dog.name) + '’s doing</h1><span id="savestate" class="savestate"></span></header><div class="stack ins">';
   h += '<div class="ins-seg" role="group" aria-label="Time range">' + segs.map(([v, l]) => '<button data-action="range" data-r="' + v + '" aria-pressed="' + (R === v) + '">' + l + '</button>').join('') + '</div>';
 
+  const xb = extraBounds(dog.id, R, rb);
+  const extra = () => renderThroughDay(dog, xb) + renderTraining(dog, xb);
   if (all.length < 2) {
-    h += '<div class="ins-card"><div class="empty"><div class="art">' + chartArt() + '</div><h3>Trends need a few days</h3><p>Log ' + esc(dog.name) + ' for ' + plural(Math.max(1, 2 - all.length), 'more day') + ' and the charts will start to fill in.</p><button class="btn sm" data-action="goto-today">Log today</button></div></div></div>';
-    return h;
+    h += '<div class="ins-card"><div class="empty"><div class="art">' + chartArt() + '</div><h3>Trends need a few days</h3><p>Log ' + esc(dog.name) + ' for ' + plural(Math.max(1, 2 - all.length), 'more day') + ' and the charts will start to fill in.</p><button class="btn sm" data-action="goto-today">Log today</button></div></div>';
+    if (xb.any) h += extra();
+    return h + '</div>';
   }
 
   // Hero: average day + trend
@@ -117,6 +124,8 @@ export function renderInsights(dog) {
     h += '</div>';
   } else h += '<div class="ins-card"><div class="empty"><p>No behaviors yet.</p></div></div>';
   h += '</section>';
+
+  h += extra();
 
   // Tags as colored pills
   const tc = {};
@@ -282,25 +291,294 @@ export function dowChart(sums, b, color) {
   return s + '</svg></div>';
 }
 
-export let dowScrollX = 0;
-export function bindHScroll() {
-  const sc = $('#dowScroll');
+export const hScrollX = {};
+export function bindHScroll(id) {
+  id = id || 'dowScroll';
+  const sc = $('#' + id);
   if (!sc) return;
   const wrap = sc.parentElement;
-  const upd = () => { wrap.classList.toggle('at-end', sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 4); dowScrollX = sc.scrollLeft; };
-  sc.scrollLeft = dowScrollX;
+  const upd = () => { wrap.classList.toggle('at-end', sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 4); hScrollX[id] = sc.scrollLeft; };
+  sc.scrollLeft = hScrollX[id] || 0;
   const sel = sc.querySelector('[aria-pressed="true"]');
   if (sel && (sel.offsetLeft + sel.offsetWidth > sc.scrollLeft + sc.clientWidth || sel.offsetLeft < sc.scrollLeft)) sc.scrollLeft = sel.offsetLeft - 16;
   sc.addEventListener('scroll', upd, { passive: true });
   upd();
 }
 
+/* =========================================================
+   Through the day / What changes it / Training
+   Data comes from the state.js helpers (momentsFor, activitiesFor, trainingFor, drillsFor) when they
+   exist; otherwise straight from S.moments / S.activities / S.training / S.drills (same shapes).
+   ========================================================= */
+const listOf = (col, dogId) => {
+  const c = S[col];
+  return c && typeof c === 'object' ? Object.values(c).filter((x) => x && x.dogId === dogId) : [];
+};
+export function momentsOf(dogId) { return typeof ST.momentsFor === 'function' ? ST.momentsFor(dogId) || [] : listOf('moments', dogId); }
+export function trainingOf(dogId) { return typeof ST.trainingFor === 'function' ? ST.trainingFor(dogId) || [] : listOf('training', dogId); }
+// Activities plus training sessions (as type 'training'), like state.js activitiesFor().
+export function activitiesOf(dogId) {
+  if (typeof ST.activitiesFor === 'function') return ST.activitiesFor(dogId) || [];
+  return listOf('activities', dogId).concat(trainingOf(dogId).map((t) => Object.assign({}, t, { type: 'training', trainingId: t.id })));
+}
+export function drillsOf(dogId) {
+  if (typeof ST.drillsFor === 'function') return ST.drillsFor(dogId, { includeArchived: true }) || [];
+  return listOf('drills', dogId);
+}
+
+// Activity wording. Labels come from ACTIVITY_TYPES when it has one; "after ___" phrases are ours.
+const ACT_FALLBACK = { walk: 'Walk', meal: 'Meal', play: 'Play', nap: 'Nap', daycare: 'Daycare', car: 'Car ride', visitors: 'Visitors', bath: 'Bath', training: 'Training', other: 'Other' };
+const ACT_AFTER = { walk: 'walks', meal: 'meals', play: 'play', nap: 'naps', daycare: 'daycare', car: 'car rides', visitors: 'visitors', bath: 'baths', training: 'training', other: 'other activities' };
+export function actLabel(type) {
+  const T = ST.ACTIVITY_TYPES;
+  let v = null;
+  if (Array.isArray(T)) v = T.find((x) => x && (x.key === type || x.id === type || x.type === type));
+  else if (T && typeof T === 'object') v = T[type];
+  const l = v && (typeof v === 'string' ? v : v.label);
+  return l || ACT_FALLBACK[type] || String(type || 'Other');
+}
+const actAfter = (type) => ACT_AFTER[type] || actLabel(type).toLowerCase();
+
+// Range bounds for the new cards. 'all' starts at the earliest entry, moment, activity or session.
+export function extraBounds(dogId, R, rb) {
+  const ms = momentsOf(dogId), as = activitiesOf(dogId), ts = trainingOf(dogId);
+  const any = ms.length > 0 || as.length > 0 || ts.length > 0;
+  let start = rb.start;
+  if (R === 'all') for (const x of ms.concat(as)) if (x && AN.isDateStr(x.date) && x.date < start) start = x.date;
+  return { start: start, end: rb.end, days: AN.dayDiff(start, rb.end) + 1, any: any, ms: ms, as: as, ts: ts };
+}
+
+const MIN_MOMENTS = 5;
+export function renderThroughDay(dog, xb) {
+  const all = dogBehaviors(dog.id, true);
+  const active = dogBehaviors(dog.id);
+  const inR = AN.inRange(xb.ms, xb.start, xb.end);
+  const counts = {};
+  for (const m of inR) counts[m.behaviorId] = (counts[m.behaviorId] || 0) + 1;
+  const withData = all.filter((b) => counts[b.id]);
+  const colorOf = (b) => { const i = active.findIndex((x) => x.id === b.id); return bColor(i >= 0 ? i : all.indexOf(b)); };
+  const name = esc(dog.name);
+  let h = '<section class="ins-card ins-day" aria-labelledby="dayTitle"><div class="chart-title"><h2 class="t" id="dayTitle">' + name + ' through the day</h2></div>';
+  if (!withData.length) {
+    h += '<div class="empty ins-empty"><div class="art">' + clockArt() + '</div><h3>When is ' + name + ' most wired?</h3><p>' +
+      (xb.ms.length ? 'No moments logged in this range. ' : '') + 'Log a few moments through the day on Today with <b>+ Moment</b>, e.g. energy after a walk or before dinner. After ' + MIN_MOMENTS + ' readings, the daily rhythm shows up here.</p>' +
+      '<button class="btn sm" data-action="goto-today">Log a moment</button></div></section>';
+    return h;
+  }
+  if (!S.dayB || !withData.some((b) => b.id === S.dayB)) S.dayB = (withData.find((b) => /energ/i.test(b.name)) || withData.slice().sort((a, b) => counts[b.id] - counts[a.id])[0]).id;
+  const b = withData.find((x) => x.id === S.dayB);
+  const color = colorOf(b);
+  if (withData.length > 1) {
+    h += '<div class="hwrap"><div class="hscroll" id="dayScroll" role="group" aria-label="Behavior">' + withData.map((x) => '<button class="chip" data-action="ins-dayb" data-bid="' + esc(x.id) + '" aria-pressed="' + (x.id === b.id) + '" style="--c:' + colorOf(x) + '"><i class="sw" aria-hidden="true"></i>' + esc((x.emoji ? x.emoji + ' ' : '') + x.name) + '</button>').join('') + '</div></div>';
+  }
+  const prof = AN.hourlyProfile(inR, b.id);
+  if (prof.total < MIN_MOMENTS) {
+    h += '<div class="empty ins-empty sm"><h3>A few more moments</h3><p>' + plural(prof.total, b.name.toLowerCase() + ' reading') + ' so far in this range. Log ' + (MIN_MOMENTS - prof.total) + ' more at different times of day and ' + name + '’s rhythm will draw here.</p>' +
+      '<button class="btn sm" data-action="goto-today">Log a moment</button></div></section>';
+    return h;
+  }
+  const win = AN.peakWindows(prof);
+  const energy = /energ/i.test(b.name);
+  let hand, sub;
+  if (!win.peak) { hand = 'still finding the pattern'; sub = 'Readings are spread thin. Keep logging at different times'; }
+  else if (win.flat) { hand = 'pretty even all day'; sub = esc(b.name) + ' stays within a point through the day'; }
+  else {
+    hand = (energy ? 'Most energetic around ' : esc(b.name) + ' highest around ') + AN.fmtWindow(win.peak.start, win.peak.end);
+    sub = (energy ? 'Calmest around ' : 'Lowest around ') + AN.fmtWindow(win.calm.start, win.calm.end) + ' (' + win.peak.mean.toFixed(1) + ' vs ' + win.calm.mean.toFixed(1) + ')';
+  }
+  h += '<div class="ins-dhead"><p class="hand">' + esc(hand) + '</p><p class="sub">' + sub + ' · ' + plural(prof.total, 'moment') + '</p></div>';
+  const strip = AN.activityStrip(xb.as, { from: xb.start, to: xb.end }).slice(0, 6);
+  h += dayChart(prof, win, strip, b, color);
+  h += '</section>';
+  h += renderEffects(dog, xb, b, inR);
+  return h;
+}
+
+export const HCHART = {};
+export function dayChart(prof, win, strip, b, color) {
+  const dataHours = prof.hours.map((x) => x.h);
+  for (const r of strip) r.hours.forEach((c, hh) => { if (c) dataHours.push(hh); });
+  const dom = AN.hourDomain(dataHours);
+  const span = dom.end - dom.start;
+  const W = 340, pl = 64, pr = 10, pt = 24, ih = 112, axisH = 24, rowH = 22;
+  const iw = W - pl - pr, cell = iw / span;
+  const H = pt + ih + axisH + (strip.length ? 8 + strip.length * rowH : 0) + 4;
+  const XB = (hh) => pl + (hh - dom.start) * cell;           // hour boundary
+  const XC = (hh) => XB(hh) + cell / 2;                       // hour bucket center
+  const Y = (v) => pt + ih - (v / 10) * ih;
+  const winTxt = (w) => AN.fmtWindow(w.start, w.end) + ' (' + w.mean.toFixed(1) + ')';
+  let label = 'Average ' + b.name + ' by hour of day from ' + plural(prof.total, 'moment') + '. ';
+  if (win.peak && !win.flat) label += 'Highest around ' + winTxt(win.peak) + ', lowest around ' + winTxt(win.calm) + '. ';
+  else if (win.peak) label += 'Fairly even through the day. ';
+  if (strip.length) label += 'Usual times: ' + strip.map((r) => actLabel(r.type) + ' around ' + AN.fmtHour(r.peakHour)).join(', ') + '.';
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">';
+  // peak / low bands
+  if (win.peak && !win.flat) {
+    const band = (w, cls, txt) => '<rect class="' + cls + '" x="' + XB(Math.max(w.start, dom.start)).toFixed(1) + '" y="' + pt + '" width="' + ((Math.min(w.end, dom.end) - Math.max(w.start, dom.start)) * cell).toFixed(1) + '" height="' + ih + '" rx="5"/>' +
+      '<text x="' + ((XB(Math.max(w.start, dom.start)) + XB(Math.min(w.end, dom.end))) / 2).toFixed(1) + '" y="' + (pt - 7) + '" text-anchor="middle" font-size="11" font-weight="800" fill="var(--ink-2)" font-family="var(--font-body)">' + txt + '</text>';
+    s += band(win.peak, 'band-hi', 'high') + band(win.calm, 'band-lo', 'low');
+  }
+  // y grid
+  [0, 5, 10].forEach((tv) => {
+    const y = Y(tv).toFixed(1);
+    s += '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y + '" y2="' + y + '" stroke="' + (tv ? 'var(--line)' : 'var(--border)') + '" stroke-width="' + (tv ? 1 : 2) + '"' + (tv ? ' stroke-dasharray="3 5"' : '') + '/>';
+    s += '<text x="' + (pl - 8) + '" y="' + y + '" dy="4" text-anchor="end" font-size="11" font-weight="600" fill="var(--ink-2)" font-family="var(--font-body)">' + tv + '</text>';
+  });
+  // x axis labels every 3 hours
+  const ay = pt + ih + 17;
+  for (let hh = Math.ceil(dom.start / 3) * 3; hh <= dom.end; hh += 3) {
+    const x = XB(hh);
+    s += '<line x1="' + x.toFixed(1) + '" x2="' + x.toFixed(1) + '" y1="' + (pt + ih) + '" y2="' + (pt + ih + 4) + '" stroke="var(--border)" stroke-width="1.5"/>';
+    s += '<text x="' + x.toFixed(1) + '" y="' + ay + '" text-anchor="' + (hh === dom.start ? 'start' : hh === dom.end ? 'end' : 'middle') + '" font-size="11" font-weight="700" fill="var(--ink-2)" font-family="var(--font-body)">' + AN.axisHour(hh) + '</text>';
+  }
+  // smoothed line, broken across gaps of more than 2 hours
+  let d = '', prev = null;
+  for (const p of prof.hours) {
+    d += (prev == null || p.h - prev > 2 ? 'M' : 'L') + XC(p.h).toFixed(1) + ' ' + Y(p.smooth).toFixed(1) + ' ';
+    prev = p.h;
+  }
+  s += '<path d="' + d.trim() + '" fill="none" stroke="' + color + '" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>';
+  // raw hourly means, sized/faded by sample count
+  const P = [];
+  for (const p of prof.hours) {
+    const k = p.n / (prof.maxN || 1);
+    const r = 2.5 + 4 * Math.sqrt(k);
+    const cx = XC(p.h), cy = Y(p.mean);
+    s += '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + r.toFixed(1) + '" fill="' + color + '" fill-opacity="' + (0.3 + 0.7 * k).toFixed(2) + '" stroke="var(--border)" stroke-width="1.5"/>';
+    P.push({ x: cx, y: cy, h: p.h, n: p.n, v: p.mean, sm: p.smooth });
+  }
+  // activity strip
+  if (strip.length) {
+    const top = pt + ih + axisH + 8;
+    strip.forEach((r, i) => {
+      const y = top + i * rowH;
+      const mx = Math.max.apply(null, r.hours);
+      s += '<text x="0" y="' + (y + 14) + '" font-size="11" font-weight="700" fill="var(--ink-2)" font-family="var(--font-body)">' + esc(actLabel(r.type)) + '</text>';
+      s += '<rect x="' + pl + '" y="' + (y + 3) + '" width="' + iw + '" height="14" rx="5" fill="var(--surface-2)"/>';
+      for (let hh = dom.start; hh < dom.end; hh++) {
+        const c = r.hours[hh]; if (!c) continue;
+        s += '<rect x="' + (XB(hh) + 1.5).toFixed(1) + '" y="' + (y + 3) + '" width="' + Math.max(2, cell - 3).toFixed(1) + '" height="14" rx="4" fill="var(--ink)" fill-opacity="' + (0.18 + 0.82 * c / mx).toFixed(2) + '"><title>' + esc(actLabel(r.type) + ' at ' + AN.fmtHour(hh) + ': ' + plural(c, 'time')) + '</title></rect>';
+      }
+    });
+  }
+  s += '<g class="hover" opacity="0"><line x1="0" x2="0" y1="' + pt + '" y2="' + (pt + ih) + '" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="3 3"/></g>';
+  s += '<rect x="0" y="0" width="' + W + '" height="' + (pt + ih + axisH) + '" fill="transparent" class="hit"/></svg>';
+  HCHART.day = { P: P, W: W, name: b.name };
+  return '<div class="chart day-chart" data-hchart="day">' + s + '<div class="tip"></div></div>';
+}
+export function bindHourChart(el) {
+  const c = HCHART[el.getAttribute('data-hchart')];
+  if (!c || !c.P.length) return;
+  const svg = el.querySelector('svg'), g = svg.querySelector('.hover'), tip = el.querySelector('.tip'), ln = g.querySelector('line');
+  const move = (ev) => {
+    const r = svg.getBoundingClientRect();
+    const x = (ev.clientX - r.left) / r.width * c.W;
+    let best = c.P[0], bd = Infinity;
+    for (const p of c.P) { const dd = Math.abs(p.x - x); if (dd < bd) { bd = dd; best = p; } }
+    g.setAttribute('opacity', '1'); ln.setAttribute('x1', best.x); ln.setAttribute('x2', best.x);
+    tip.textContent = AN.fmtHour(best.h) + ' · ' + best.v.toFixed(1) + ' avg · ' + plural(best.n, 'reading');
+    const px = best.x / c.W * r.width + (r.left - el.getBoundingClientRect().left);
+    const half = tip.offsetWidth / 2 + 4;
+    tip.style.left = clamp(px, half, el.clientWidth - half) + 'px';
+    tip.classList.add('on');
+  };
+  const leave = () => { g.setAttribute('opacity', '0'); tip.classList.remove('on'); };
+  svg.addEventListener('pointermove', move);
+  svg.addEventListener('pointerdown', move);
+  svg.addEventListener('pointerleave', leave);
+  svg.addEventListener('pointercancel', leave);
+}
+
+export function renderEffects(dog, xb, b, momentsInRange) {
+  const res = AN.activityEffects(momentsInRange, xb.as, b.id, { from: xb.start, to: xb.end, higherIsBetter: !!b.higherIsBetter });
+  const bn = b.name.toLowerCase();
+  let h = '<section class="ins-card ins-fx" aria-labelledby="fxTitle"><div class="chart-title"><h2 class="t" id="fxTitle">What changes it</h2><span class="s">' + esc(bn) + ', 2 h before vs after</span></div>';
+  if (!res.rows.length) {
+    h += '<div class="fx-none"><p class="fx-nh">Not enough data yet</p><p>Log ' + esc(bn) + ' shortly before and after walks, meals or training (same day, within 2 hours). Once an activity has 3 before-and-after pairs, it shows up here.</p>';
+    if (res.candidates.length) h += '<ul class="fx-cand">' + res.candidates.slice(0, 3).map((c) => '<li><span>' + esc(actLabel(c.type)) + '</span><span class="num">' + c.n + ' of 3 pairs</span></li>').join('') + '</ul>';
+    return h + '</div></section>';
+  }
+  h += '<ul class="fx-rows">';
+  for (const r of res.rows.slice(0, 8)) {
+    const cls = r.better == null ? 'flat' : r.better ? 'good' : 'bad';
+    const arrow = r.dir === 'up' ? '↑' : r.dir === 'down' ? '↓' : '→';
+    const val = r.dir === 'flat' ? 'about the same' : arrow + ' ' + Math.abs(r.delta).toFixed(1);
+    const word = r.dir === 'flat' ? 'no clear change' : (r.dir === 'up' ? 'higher' : 'lower') + ', ' + (r.better ? 'better' : 'worse');
+    const pct = clamp(Math.abs(r.delta) / 4 * 50, r.dir === 'flat' ? 0 : 3, 50);
+    h += '<li class="fx-row ' + cls + '"><div class="fx-top"><span class="fx-l">After ' + esc(actAfter(r.type)) + '</span><span class="fx-v"><span class="vh">' + esc(b.name) + ' </span><span class="fx-bn" aria-hidden="true">' + esc(bn) + ' </span><b>' + val + '</b><span class="vh"> (' + word + ')</span></span></div>' +
+      '<div class="fx-bar" aria-hidden="true"><i class="' + (r.delta < 0 ? 'neg' : 'pos') + '" style="width:' + pct.toFixed(1) + '%"></i></div>' +
+      '<div class="fx-sub num">' + r.before.toFixed(1) + ' before → ' + r.after.toFixed(1) + ' after · ' + plural(r.n, 'time') + '</div></li>';
+  }
+  h += '</ul><p class="fx-foot">Average change in ' + esc(dog.name) + '’s ' + esc(bn) + ' within 2 hours, same day. Moments tagged with an activity count as “after”.</p></section>';
+  return h;
+}
+
+const RESULT_TXT = AN.RESULT_WORDS;
+function dotMeter(v) {
+  let s = '<span class="itmeter r' + (v || 0) + '" role="img" aria-label="Latest: ' + esc(v ? RESULT_TXT[v].toLowerCase() : 'no result') + '">';
+  for (let i = 1; i <= 3; i++) s += '<i class="' + (v && i <= v ? 'on' : '') + '"></i>';
+  return s + '</span>';
+}
+function weekBars(weeks) {
+  const ws = weeks.slice(-26);
+  const W = 140, H = 34, gap = 2;
+  const mx = Math.max(1, Math.max.apply(null, ws));
+  const bw = Math.max(2, (W - gap * (ws.length - 1)) / ws.length);
+  let s = '<svg class="wkbars" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Sessions per week, oldest to newest: ' + ws.join(', ') + '">';
+  ws.forEach((n, i) => {
+    const x = i * (bw + gap), bh = n ? Math.max(4, n / mx * (H - 4)) : 2;
+    s += '<rect x="' + x.toFixed(1) + '" y="' + (H - bh).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="2" fill="' + (n ? 'var(--ink)' : 'var(--line)') + '"/>';
+  });
+  return s + '</svg>';
+}
+export function renderTraining(dog, xb) {
+  const name = esc(dog.name);
+  const lib = drillsOf(dog.id);
+  const sum = AN.trainingSummary(xb.ts, lib, { from: xb.start, to: xb.end, today: todayStr() });
+  let h = '<section class="ins-card ins-train" aria-labelledby="trTitle"><div class="chart-title"><h2 class="t" id="trTitle">Training</h2>' + (sum.sessions ? '<span class="s">' + plural(sum.drills.length, 'drill') + ' practiced</span>' : '') + '</div>';
+  if (!sum.sessions && !sum.needsPractice.length) {
+    h += '<div class="empty ins-empty"><div class="art">' + capArt() + '</div><h3>No training logged' + (xb.ts.length ? ' in this range' : ' yet') + '</h3><p>Add a session from Today with <b>+ Training</b>: pick the drills you worked on and how ' + name + ' did. Progress per drill shows up here.</p>' +
+      '<button class="btn sm" data-action="goto-today">Log training</button></div></section>';
+    return h;
+  }
+  const perWeek = sum.sessions / Math.max(1, xb.days / 7);
+  h += '<div class="itr-tiles"><div class="itr-stat"><span class="v num">' + sum.sessions + '</span><span class="k">' + (sum.sessions === 1 ? 'session' : 'sessions') + '</span></div>' +
+    '<div class="itr-stat"><span class="v num">' + sum.minutes + '</span><span class="k">minutes</span></div>' +
+    '<div class="itr-stat wk"><span class="k">' + (perWeek >= 0.95 ? round1(perWeek) + ' a week' : 'per week') + '</span>' + weekBars(sum.weeks) + '</div></div>';
+  if (sum.drills.length) {
+    h += '<ul class="itr-drills">';
+    for (const r of sum.drills.slice(0, 10)) {
+      const tr = r.trend === 'up' ? '<span class="itrd good">↑ improving</span>' : r.trend === 'down' ? '<span class="itrd bad">↓ slipping</span>' : r.trend === 'flat' ? '<span class="itrd flat">→ steady</span>' : '';
+      h += '<li class="itr-drill"><div class="itr-top"><span class="itr-nm">' + esc(r.name) + '</span>' + dotMeter(r.latest) + '</div>' +
+        '<div class="itr-sub">' + plural(r.count, 'time') + (r.nailedRate != null ? ' · ' + Math.round(r.nailedRate * 100) + '% nailed it' : '') + (tr ? ' · ' + tr : '') + '</div></li>';
+    }
+    h += '</ul>';
+    if (sum.drills.length > 10) h += '<p class="itr-more">+ ' + plural(sum.drills.length - 10, 'more drill') + '</p>';
+  } else h += '<p class="itr-more">No sessions in this range.</p>';
+  if (sum.needsPractice.length) {
+    h += '<div class="itr-needs"><h3 class="itr-h">Needs practice</h3><ul>' + sum.needsPractice.slice(0, 5).map((n) => '<li><span class="itr-nm">' + esc(n.name) + '</span><span class="itr-why">' +
+      (n.reason === 'struggling' ? 'Struggled ' + n.struggled + ' of last ' + n.of : 'Last practiced ' + plural(n.daysSince, 'day') + ' ago') + '</span></li>').join('') + '</ul></div>';
+  }
+  if (sum.notes.length) {
+    h += '<div class="itr-notes"><h3 class="itr-h">Recent notes</h3>' + sum.notes.map((n) => '<button class="itr-note" data-action="open-day" data-date="' + esc(n.date) + '" aria-label="Open ' + esc(fmt(n.date, { weekday: 'long', month: 'long', day: 'numeric' })) + ': ' + esc(n.text.slice(0, 80)) + '">' +
+      '<span class="when">' + esc(fmt(n.date, { weekday: 'short', month: 'short', day: 'numeric' })) + (n.focus ? ' · ' + esc(n.focus) : '') + '</span><span class="txt">' + esc(n.text) + '</span></button>').join('') + '</div>';
+  }
+  return h + '</section>';
+}
+function clockArt() {
+  return '<svg viewBox="0 0 84 84" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="42" cy="42" r="30"/><path d="M42 24v18l12 8"/></svg>';
+}
+function capArt() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg>';
+}
+
 registerScreen('insights', {
   render: renderInsights,
-  afterRender() { bindHScroll(); $$('.chart[data-chart]').forEach(bindChart); }
+  afterRender() { bindHScroll(); bindHScroll('dayScroll'); $$('.chart[data-chart]').forEach(bindChart); $$('.chart[data-hchart]').forEach(bindHourChart); }
 });
 
 registerActions({
   'range': (el) => { S.insRange = el.dataset.r; render(); },
   'dow': (el) => { S.dowB = el.dataset.bid; const y = window.scrollY; render(); window.scrollTo(0, y); },
+  'ins-dayb': (el) => { S.dayB = el.dataset.bid; const y = window.scrollY; render(); window.scrollTo(0, y); },
 });

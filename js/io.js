@@ -1,8 +1,8 @@
 // Export (JSON backup, CSV) and import.
 import { photoFullSrc, photoSrc } from './photos.js';
 import { registerActions } from './registry.js';
-import { S, entryScore, isLogged, normalizeEntry, photosOf, ratingsOf, saveQuickTags, setActiveDog, settings, sortedDogs, tagsOf } from './state.js';
-import { ROOT, Store, flushPending, localSave, withRetry } from './store.js';
+import { DRILL_RESULTS, S, activityMeta, entryScore, isLogged, normalizeEntry, photosOf, ratingsOf, saveQuickTags, sessionDrills, setActiveDog, settings, sortedDogs, tagsOf } from './state.js';
+import { ROOT, Store, TIMELINE_COLS, flushPending, localSave, withRetry } from './store.js';
 import { confirmDialog, copyText, openSheet, render, toast } from './ui.js';
 import { I, clone, esc, hasClaude, plural, todayStr } from './util.js';
 
@@ -16,7 +16,7 @@ export async function exportObj() {
     const d = S.photoFull[id] || (S.mode === 'db' ? await photoFullSrc(id) : '');
     if (d && d !== photoSrc(id)) full[id] = d;
   }
-  return { app: 'pawlog', version: 2, exportedAt: new Date().toISOString(), dogs: S.dogs, behaviors: S.behaviors, entries: S.entries, events: S.events, photos: S.photos, photoFull: full, settings: { app: { quickTags: settings().quickTags } } };
+  return { app: 'pawlog', version: 2, exportedAt: new Date().toISOString(), dogs: S.dogs, behaviors: S.behaviors, entries: S.entries, events: S.events, moments: S.moments, activities: S.activities, training: S.training, drills: S.drills, photos: S.photos, photoFull: full, settings: { app: { quickTags: settings().quickTags } } };
 }
 export function csvCell(v) { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 export function exportCsv() {
@@ -31,7 +31,23 @@ export function exportCsv() {
     for (const [bid, v] of Object.entries(ratingsOf(e))) { const b = S.behaviors[bid]; if (b) byName[b.name] = v; }
     rows.push([e.date, dog ? dog.name : ''].concat(names.map((n) => byName[n]), [entryScore(e), e.walkMinutes, e.weight, dog ? dog.weightUnit : '', e.meals, tagsOf(e).join('; '), e.notes, photosOf(e).length]).map(csvCell).join(','));
   }
+  const tl = timelineCsvRows();
+  if (tl.length > 1) rows.push('', ...tl);
   return rows.join('\r\n');
+}
+// Second table in the CSV (after a blank line): one row per moment, activity and training session.
+export function timelineCsvRows() {
+  const head = ['kind', 'date', 'time', 'dog', 'what', 'value', 'during', 'duration_min', 'drills', 'notes'];
+  const items = [];
+  const dn = (id) => (S.dogs[id] ? S.dogs[id].name : '');
+  for (const m of Object.values(S.moments)) if (m && m.date) { const b = S.behaviors[m.behaviorId]; items.push(['moment', m.date, m.time, dn(m.dogId), b ? b.name : '', m.value, m.activity ? activityMeta(m.activity).label : '', '', '', m.note]); }
+  for (const a of Object.values(S.activities)) if (a && a.date) items.push(['activity', a.date, a.time, dn(a.dogId), activityMeta(a.type).label, '', '', a.durationMin, '', a.note]);
+  for (const t of Object.values(S.training)) if (t && t.date) {
+    const dr = sessionDrills(t).map(([id, v]) => (S.drills[id] ? S.drills[id].name : 'Removed drill') + ': ' + (DRILL_RESULTS[v.result] || '–') + (v.reps ? ' x' + v.reps : '') + (v.note ? ' (' + v.note + ')' : '')).join('; ');
+    items.push(['training', t.date, t.time, dn(t.dogId), t.focus || 'Training', t.engagement, t.location, t.durationMin, dr, t.notes]);
+  }
+  items.sort((a, b) => (a[1] + a[2] < b[1] + b[2] ? -1 : a[1] + a[2] > b[1] + b[2] ? 1 : 0));
+  return [head].concat(items).map((r) => r.map(csvCell).join(','));
 }
 export async function saveFile(filename, text, mime) {
   if (hasClaude()) {
@@ -66,7 +82,9 @@ export async function importJson(file) {
   try { data = JSON.parse(await file.text()); } catch (e) { toast("That file isn't valid JSON.", true); return; }
   if (!data || data.app !== 'pawlog' || typeof data.dogs !== 'object') { toast("That doesn't look like a Pawlog backup.", true); return; }
   const nd = Object.keys(data.dogs || {}).length, ne = Object.keys(data.entries || {}).length;
-  const ch = await confirmDialog({ title: 'Import backup?', body: plural(nd, 'dog') + ' and ' + plural(ne, 'log entry', 'log entries') + '. Matching records are replaced; everything else is kept.', ok: 'Import' });
+  const cnt = (c) => (data[c] && typeof data[c] === 'object' ? Object.keys(data[c]).length : 0);
+  const nt = cnt('moments') + cnt('activities') + cnt('training');
+  const ch = await confirmDialog({ title: 'Import backup?', body: plural(nd, 'dog') + ', ' + plural(ne, 'log entry', 'log entries') + (nt ? ' and ' + plural(nt, 'timeline item') : '') + '. Matching records are replaced; everything else is kept.', ok: 'Import' });
   if (ch !== 1) return;
   let n = 0;
   const okId = (id) => /^[A-Za-z0-9_\-.~:@+]{1,200}$/.test(id);
@@ -85,7 +103,7 @@ export async function importJson(file) {
     }
     Store.put('photos', id, meta); n++;
   }
-  for (const col of ['dogs', 'behaviors', 'entries', 'events']) {
+  for (const col of ['dogs', 'behaviors', 'entries', 'events'].concat(TIMELINE_COLS)) {
     const src = data[col];
     if (!src || typeof src !== 'object') continue;
     for (const [id, v] of Object.entries(src)) {

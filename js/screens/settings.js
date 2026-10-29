@@ -4,7 +4,7 @@
 import { FB } from '../firebase.js';
 import { avatarHtml } from '../photos.js';
 import { actions, registerActions, registerForms, registerScreen } from '../registry.js';
-import { S, curDog, dogBehaviors, isLogged, saveQuickTags, setPref, settings, sortedDogs } from '../state.js';
+import { DRILL_CATEGORIES, S, curDog, dogBehaviors, drillsFor, isLogged, saveQuickTags, sessionDrills, setPref, settings, sortedDogs } from '../state.js';
 import { Store, canWrite, peopleSeen, personName, wantNames } from '../store.js';
 import { applyTheme, bannerHtml, closeSheet, confirmDialog, openSheet, render, scheduleRender, toast } from '../ui.js';
 import { $, I, esc, genId, plural } from '../util.js';
@@ -38,6 +38,10 @@ export function renderPrefs(dog) {
   h += '<section id="behaviors" class="beh-section"><div class="set-h"><h2>Behaviors for ' + esc(dog.name) + '</h2></div>' +
     '<p class="small muted set-lead">These are the sliders on the Today screen. Tap one to rename it or change its labels.</p>' +
     '<div class="behMgr">' + behaviorManagerHtml(dog) + '</div></section>';
+
+  h += '<section id="drills" class="beh-section"><div class="set-h"><h2>Training drills</h2></div>' +
+    '<p class="small muted set-lead">' + esc(dog.name) + '’s drill library for training sessions. Archived drills stay in past sessions.</p>' +
+    '<div class="drillMgr">' + drillManagerHtml(dog) + '</div></section>';
 
   h += '<section><div class="set-h"><h2>Quick tags</h2></div><div class="scard pad"><div class="chips">' + (s.quickTags || []).map((tg, i) =>
     '<span class="chip tagchip-x">' + esc(tg) + '<button data-action="rm-quicktag" data-i="' + i + '" aria-label="Remove tag ' + esc(tg) + '">' + I.x + '</button></span>').join('') + '</div>' +
@@ -193,5 +197,101 @@ registerForms({
     const q = settings().quickTags;
     if (q.indexOf(v) < 0) { q.push(v); saveQuickTags(q); }
     render(); const i = $('#qtNew'); if (i) i.focus();
+  }
+});
+
+/* ---------- Training drill library (Settings section) ---------- */
+function drillUses(id) { let n = 0; for (const t of Object.values(S.training)) if (t && sessionDrills(t).some(([k]) => k === id)) n++; return n; }
+export function drillManagerHtml(dog) {
+  const all = drillsFor(dog.id, { includeArchived: true });
+  const active = all.filter((d) => !d.archived), archived = all.filter((d) => d.archived);
+  if (S.readOnly) {
+    return '<div class="scard rows bm-list dr-list">' + (active.length ? active.map((d) => '<div class="row"><span class="grow"><div class="t">' + esc(d.name) + '</div><div class="s">' + esc(d.category || 'Custom') + '</div></span></div>').join('')
+      : '<p class="small muted bm-empty">No drills yet.</p>') + '</div>';
+  }
+  let h = '<div class="scard rows bm-list dr-list">';
+  active.forEach((d, i) => {
+    const n = drillUses(d.id);
+    h += '<div class="bm" data-did="' + esc(d.id) + '"><button class="main" data-action="drill-edit" data-id="' + esc(d.id) + '" aria-label="Edit ' + esc(d.name) + '"><span class="grow"><div class="t">' + esc(d.name) + '</div><div class="s">' + esc(d.category || 'Custom') + (n ? ' · practiced ' + plural(n, 'time') : '') + '</div></span></button>' +
+      '<button class="icon-btn" data-action="drill-move" data-id="' + esc(d.id) + '" data-d="-1" aria-label="Move ' + esc(d.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>' + I.up + '</button>' +
+      '<button class="icon-btn" data-action="drill-move" data-id="' + esc(d.id) + '" data-d="1" aria-label="Move ' + esc(d.name) + ' down"' + (i === active.length - 1 ? ' disabled' : '') + '>' + I.down + '</button>' +
+      '<button class="icon-btn" data-action="drill-archive" data-id="' + esc(d.id) + '" aria-label="Archive ' + esc(d.name) + '">' + I.archive + '</button></div>';
+  });
+  if (!active.length) h += '<p class="small muted bm-empty">No drills yet. Add one here, or pick from suggestions while logging a training session.</p>';
+  h += '<button class="row add-row" data-action="drill-new">' + ic(I.plus) + 'Add drill</button></div>';
+  if (archived.length) {
+    h += '<div class="set-h sub"><h3>Archived</h3><span class="aside">hidden from the picker, history kept</span></div><div class="scard rows bm-list dr-list">' + archived.map((d) =>
+      '<div class="bm archived"><button class="main" data-action="drill-edit" data-id="' + esc(d.id) + '" aria-label="Edit ' + esc(d.name) + '"><span class="grow"><div class="t">' + esc(d.name) + '</div><div class="s">' + esc(d.category || 'Custom') + '</div></span></button>' +
+      '<button class="btn sm set-add" data-action="drill-unarchive" data-id="' + esc(d.id) + '">Restore</button>' +
+      '<button class="icon-btn" data-action="drill-delete" data-id="' + esc(d.id) + '" aria-label="Delete ' + esc(d.name) + '">' + I.trash + '</button></div>').join('') + '</div>';
+  }
+  return h;
+}
+export function openDrillSheet(id) {
+  const d = id ? S.drills[id] : null;
+  const dog = curDog();
+  const cat = d ? d.category : 'Basics';
+  const body = '<form class="form" data-form="drill" data-id="' + esc(id || '') + '" autocomplete="off">' +
+    '<label class="field"><span>Name</span><input class="input" id="dr_name" name="name" required maxlength="40" placeholder="e.g. Wait at the curb" value="' + esc(d ? d.name : '') + '"></label>' +
+    '<div class="field"><span class="flabel" id="drCatL">Category</span><div class="chips" role="radiogroup" aria-labelledby="drCatL">' + DRILL_CATEGORIES.map((c) =>
+      '<label class="chip dr-cat"><input type="radio" class="vh" name="category" value="' + esc(c) + '"' + (c === cat ? ' checked' : '') + '>' + esc(c) + '</label>').join('') + '</div></div>' +
+    '<button class="btn block" type="submit">' + (d ? 'Save' : 'Add drill') + '</button>' +
+    (d ? '<button class="btn block soft" type="button" data-action="' + (d.archived ? 'drill-unarchive' : 'drill-archive') + '" data-id="' + esc(id) + '">' + I.archive + (d.archived ? 'Restore to the picker' : 'Archive (keep history)') + '</button>' +
+      '<button class="btn block danger" type="button" data-action="drill-delete" data-id="' + esc(id) + '">' + I.trash + 'Delete drill</button>' : '') + '</form>';
+  openSheet(d ? 'Edit ' + d.name : 'New drill for ' + (dog ? dog.name : 'your dog'), body, () => { if (!d) setTimeout(() => { const i = $('#dr_name'); if (i) i.focus(); }, 320); });
+}
+function afterDrillChange() {
+  if (!$('#sheetRoot').hidden) closeSheet();
+  const y = window.scrollY; render(); window.scrollTo(0, y);
+}
+registerActions({
+  'drill-new': () => openDrillSheet(null),
+  'drill-edit': (el) => openDrillSheet(el.dataset.id),
+  'drill-move': (el) => {
+    const dog = curDog(); const list = drillsFor(dog.id); const i = list.findIndex((d) => d.id === el.dataset.id); const j = i + Number(el.dataset.d);
+    if (i < 0 || j < 0 || j >= list.length) return;
+    const tmp = list[i]; list[i] = list[j]; list[j] = tmp;
+    list.forEach((d, k) => { if (d.order !== k) Store.put('drills', d.id, Object.assign({}, d, { order: k })); });
+    const y = window.scrollY; render(); window.scrollTo(0, y);
+    refocus('[data-action="drill-move"][data-id="' + el.dataset.id + '"][data-d="' + el.dataset.d + '"]');
+  },
+  'drill-archive': (el) => {
+    const d = S.drills[el.dataset.id]; if (!d) return;
+    Store.put('drills', d.id, Object.assign({}, d, { archived: true })); toast(d.name + ' archived');
+    afterDrillChange();
+  },
+  'drill-unarchive': (el) => {
+    const d = S.drills[el.dataset.id]; if (!d) return;
+    const max = Math.max(-1, ...drillsFor(d.dogId).map((x) => x.order || 0));
+    Store.put('drills', d.id, Object.assign({}, d, { archived: false, order: max + 1 })); toast(d.name + ' is back in the picker');
+    afterDrillChange();
+  },
+  'drill-delete': async (el) => {
+    const d = S.drills[el.dataset.id]; if (!d) return;
+    const n = drillUses(d.id);
+    const c = await confirmDialog({ title: 'Delete ' + d.name + '?', body: (n ? 'It’s in ' + plural(n, 'training session') + '. Those sessions will show it as a removed drill. ' : '') + 'Archive it instead to keep its name in past sessions.', ok: 'Delete', danger: true, alt: d.archived ? null : 'Archive instead' });
+    if (c === 2) { actions['drill-archive'](el); return; }
+    if (c !== 1) return;
+    Store.del('drills', d.id); toast(d.name + ' deleted');
+    afterDrillChange();
+  },
+}, ['drill-new', 'drill-edit', 'drill-move', 'drill-archive', 'drill-unarchive', 'drill-delete']);
+registerForms({
+  'drill': (f) => {
+    if (S.readOnly) { canWrite(); return; }
+    const fd = new FormData(f);
+    const dog = curDog();
+    const id = f.dataset.id || genId('d');
+    const prev = S.drills[id];
+    const name = String(fd.get('name') || '').trim().replace(/\s+/g, ' ');
+    if (!name) { toast('Give the drill a name.', true); const i = $('#dr_name'); if (i) i.focus(); return; }
+    const clash = drillsFor(dog.id, { includeArchived: true }).find((x) => x.id !== id && x.name.toLowerCase() === name.toLowerCase());
+    if (clash) { toast(dog.name + ' already has a drill called ' + clash.name + (clash.archived ? ' (archived)' : '') + '.', true); return; }
+    const cat = String(fd.get('category') || 'Custom');
+    const d = Object.assign({}, prev || { dogId: dog.id, archived: false, order: Math.max(-1, ...drillsFor(dog.id).map((x) => x.order || 0)) + 1, createdBy: S.me || null, createdAt: Date.now() }, {
+      id: id, name: name, category: DRILL_CATEGORIES.indexOf(cat) >= 0 ? cat : 'Custom', updatedBy: S.me || null, updatedAt: Date.now()
+    });
+    Store.put('drills', id, d);
+    afterDrillChange(); toast(prev ? 'Saved' : name + ' added');
   }
 });

@@ -7,6 +7,7 @@ import { applyTheme, ensureHeadMeta } from './ui.js';
 import { LS_THEME, hasClaude, lsGet } from './util.js';
 import './screens/onboarding.js';
 import './screens/today.js';
+import './screens/timeline.js';
 import './screens/history.js';
 import './screens/insights.js';
 import './screens/dog.js';

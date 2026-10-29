@@ -119,3 +119,12 @@ mark { background: var(--hero, var(--honey-soft)); color: var(--hero-ink, inheri
   .hist-navbtn, .entry.pg, .cal .d { transition: none; }
   .cal .d:not(.future):active, .entry.pg:active, .hist-navbtn:active { transform: none; }
 }
+
+/* Timeline badges on a page row: "Training · 3 drills", "5 moments" */
+.hist-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.hist-badge {
+  display: inline-flex; align-items: center; min-height: 26px; padding: 0 9px; border-radius: 13px;
+  font-size: 13px; font-weight: 800; color: var(--hero-ink); background: var(--honey-soft); border: 2px solid var(--border);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .hist-badge { color: var(--ink); } }
+:root[data-theme="dark"] .hist-badge { color: var(--ink); }

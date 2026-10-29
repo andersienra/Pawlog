@@ -115,3 +115,8 @@
 .tp-back { min-height: 48px; }
 @media (prefers-reduced-motion: reduce) { .tpc, .onb-go, .tp-go { transition: none; } .tpc:active { transform: none; } }
 .emoji-in { max-width: 96px; text-align: center; font-size: 22px; }
+
+/* Training drill library: category chips (radio inputs inside .chip labels) */
+.dr-cat { cursor: pointer; position: relative; }
+.dr-cat:has(input:checked) { background: var(--ink); color: var(--bg); }
+.dr-cat:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }

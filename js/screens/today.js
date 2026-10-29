@@ -1,4 +1,5 @@
-// Today screen (Scrapbook): date header, reminders, polaroid + vibe score card, behavior sliders, tags,
+// Today screen (Scrapbook): date header, reminders, polaroid + vibe score card, behavior sliders,
+// through-the-day timeline (./timeline.js), tags,
 // lined-paper notes, details, photos.
 import { avatarHtml, imgTag, releasePhoto, savePhoto } from '../photos.js';
 import { registerActions, registerForms, registerPicks, registerScreen } from '../registry.js';
@@ -6,6 +7,8 @@ import { S, curDog, dogBehaviors, dueEvents, dueText, entryId, entryScore, getEn
 import { Store, byLine, canWrite, flushPending, pendingEdits, refreshSaveState } from '../store.js';
 import { autoGrow, bannerHtml, confirmDialog, dragging, go, openLightbox, render, toast } from '../ui.js';
 import { $, $$, EVENT_TYPES, I, PAW, addDays, clamp, diffDays, esc, fmt, isDate, pd, plural, round1, todayStr } from '../util.js';
+// Today's own sub-module (same owner): the "Through the day" timeline section and its sheets.
+import { patchTimeline, timelineSectionHtml } from './timeline.js';
 
 /* =========================================================
    TODAY
@@ -57,6 +60,9 @@ export function renderToday(dog) {
   if (!S.readOnly) h += '<div class="beh-tools"><button class="beh-add" data-action="behavior-new">' + I.plus + 'Add behavior</button>' +
     (bs.length ? '<button class="beh-edit" data-action="behaviors-manage">' + I.edit + 'Edit</button>' : '') + '</div>';
   h += '</section>';
+
+  // Through the day: moments, activities, training sessions
+  h += timelineSectionHtml(dog);
 
   // Tags
   const qt = settings().quickTags || [];
@@ -222,6 +228,7 @@ export function patchToday() {
   const by = $('#byline'); if (by) by.textContent = byLine(e);
   refreshPolaroid(e);
   updateTodayLive(dog);
+  patchTimeline(dog);
 }
 
 // Someone else changed the note while this person was typing in it: their text stayed on screen,

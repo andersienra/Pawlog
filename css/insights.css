@@ -137,3 +137,85 @@ button.ins-tile:active { transform: translate(-1px, -1px); box-shadow: var(--pop
   .ins-seg button, .ins-tile, .chart .tip { transition: none; }
   button.ins-tile:active { transform: none; }
 }
+
+/* ---------- Through the day / What changes it / Training ---------- */
+.ins-card h2.t { margin: 0; font-size: 17px; letter-spacing: -.005em; line-height: 1.2; }
+.ins-empty { padding: 18px 20px 22px; }
+.ins-empty .art { width: 64px; height: 64px; }
+.ins-empty h3 { font-size: 19px; }
+.ins-empty.sm { padding-top: 10px; }
+.ins-day .hwrap::after { top: 10px; }
+.ins-day .hscroll { padding-top: 10px; }
+.ins-dhead { padding: 8px 16px 0; }
+.ins-dhead .hand { font-family: var(--font-hand, "Caveat", cursive); font-weight: 700; font-size: 25px; line-height: 1.05; margin: 0; color: var(--ink); text-wrap: balance; }
+.ins-dhead .sub { margin: 3px 0 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.day-chart { padding: 6px 12px 10px; }
+.day-chart .band-hi { fill: var(--hero, #FFD25A); fill-opacity: .5; }
+.day-chart .band-lo { fill: var(--surface-2); }
+
+/* What changes it */
+.fx-rows { list-style: none; margin: 0; padding: 6px 16px 4px; display: flex; flex-direction: column; }
+.fx-row { padding: 10px 0; border-top: 1.5px solid var(--line); }
+.fx-row:first-child { border-top: 0; }
+.fx-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.fx-l { font-weight: 800; font-size: 15px; min-width: 0; }
+.fx-v { font-size: 14px; font-weight: 600; color: var(--ink-2); white-space: nowrap; flex: none; }
+.fx-v b { font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; }
+.fx-row.good .fx-v b { color: var(--good-text); }
+.fx-row.bad .fx-v b { color: var(--bad-text); }
+.fx-row.flat .fx-v b { color: var(--ink-2); }
+.fx-bar { position: relative; height: 12px; margin: 7px 0 5px; border-radius: 6px; background: var(--surface-2); }
+.fx-bar::before { content: ""; position: absolute; left: calc(50% - 1px); top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--border); }
+.fx-bar i { position: absolute; top: 0; bottom: 0; border: 2px solid var(--border); }
+.fx-bar i.pos { left: 50%; border-radius: 0 6px 6px 0; border-left: 0; }
+.fx-bar i.neg { right: 50%; border-radius: 6px 0 0 6px; border-right: 0; }
+.fx-row.good .fx-bar i { background: var(--good); }
+.fx-row.bad .fx-bar i { background: var(--bad); }
+.fx-row.flat .fx-bar i { background: var(--ink-3); border: 0; }
+.fx-sub { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.fx-foot { margin: 0; padding: 4px 16px 14px; font-size: 13px; color: var(--ink-2); }
+.fx-none { padding: 10px 16px 16px; }
+.fx-none p { margin: 0; color: var(--ink-2); font-size: 14px; }
+.fx-none .fx-nh { font-family: var(--font-hand, "Caveat", cursive); font-weight: 700; font-size: 23px; color: var(--ink); margin-bottom: 4px; }
+.fx-cand { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fx-cand li { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 700; padding: 6px 10px; border-radius: var(--r-sm, 12px); background: var(--surface-2); }
+.fx-cand li .num { color: var(--ink-2); font-weight: 600; }
+
+/* Training */
+.itr-tiles { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, .8fr) minmax(0, 1.4fr); gap: 8px; padding: 12px 16px 4px; }
+.itr-stat { display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; min-width: 0; padding: 8px 10px; border-radius: var(--r-sm, 12px); background: var(--surface-2); }
+.itr-stat .v { font-family: var(--font-display); font-weight: 800; font-size: 26px; line-height: 1.05; }
+.itr-stat .k { font-size: 12px; font-weight: 700; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.itr-stat .wkbars { width: 100%; height: 34px; display: block; }
+.itr-drills, .itr-needs ul { list-style: none; margin: 0; padding: 0 16px; }
+.itr-drills { padding-top: 6px; }
+.itr-drill { padding: 9px 0; border-top: 1.5px solid var(--line); }
+.itr-drill:first-child { border-top: 0; }
+.itr-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.itr-nm { font-weight: 800; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itr-sub { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-top: 2px; }
+.itrd.good { color: var(--good-text); font-weight: 800; }
+.itrd.bad { color: var(--bad-text); font-weight: 800; }
+.itrd.flat { color: var(--ink-2); }
+.itmeter { display: inline-flex; gap: 4px; flex: none; }
+.itmeter i { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--border); background: transparent; }
+.itmeter i.on { background: var(--ink); }
+.itmeter.r3 i.on { background: var(--good); }
+.itmeter.r1 i.on { background: var(--bad); }
+.itr-more { margin: 0; padding: 4px 16px 8px; font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.itr-h { font-family: var(--font-display); font-weight: 800; font-size: 15px; margin: 0 0 4px; }
+.itr-needs { margin: 8px 16px 0; padding: 10px 0 4px; border-radius: var(--r-sm, 12px); background: var(--honey-soft, #FFEDB8); }
+.itr-needs .itr-h { padding: 0 12px; }
+.itr-needs ul { padding: 0 12px; }
+.itr-needs li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 5px 0; }
+.itr-needs .itr-why { font-size: 13px; font-weight: 600; color: var(--ink-2); text-align: right; flex: none; }
+.itr-notes { padding: 12px 16px 14px; }
+.itr-note {
+  display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; min-height: 44px; text-align: left;
+  padding: 8px 12px; margin-top: 6px; border-radius: var(--r-sm, 12px); border: 2px solid var(--border); background: var(--surface);
+}
+.itr-note:active { background: var(--surface-2); }
+.itr-note .when { font-size: 12px; font-weight: 800; color: var(--ink-2); }
+.itr-note .txt { font-size: 14px; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ins-train > .itr-notes:last-child, .ins-train > .itr-needs:last-child { margin-bottom: 14px; }
+.ins-train > .itr-drills:last-child { padding-bottom: 8px; }

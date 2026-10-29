@@ -21,6 +21,12 @@ export const existing = new Set();       // "col/id" known to exist in the store
 export const lastWritten = new Map();
 export let activeWrites = 0; export const waitQ = [];
 export let localTimer = null; export const localDirty = { data: false, photos: false, full: false };
+// Timeline collections (moments, activities, training sessions, drill library).
+export const TIMELINE_COLS = ['moments', 'activities', 'training', 'drills'];
+// Everything kept in the local-mode data blob (photos live in their own keys).
+export const DATA_COLS = ['dogs', 'behaviors', 'entries', 'events', 'settings'].concat(TIMELINE_COLS);
+// Docs written as merge patches: incoming snapshots are merged under the unconfirmed local overlay.
+export const PATCH_COLS = ['entries', 'moments', 'activities', 'training'];
 
 export function stamp(patch) {
   if (!S.me) return patch;
@@ -93,7 +99,8 @@ export function localFlush() {
   if (S.mode !== 'local') return;
   let ok = true;
   if (localDirty.data) {
-    ok = lsSet(LS_DATA, JSON.stringify({ dogs: S.dogs, behaviors: S.behaviors, entries: S.entries, events: S.events, settings: S.settings })) && ok;
+    const blob = {}; for (const c of DATA_COLS) blob[c] = S[c];
+    ok = lsSet(LS_DATA, JSON.stringify(blob)) && ok;
     localDirty.data = false;
   }
   if (localDirty.photos) { ok = lsSet(LS_PHOTOS, JSON.stringify(S.photos)) && ok; localDirty.photos = false; }
@@ -107,7 +114,7 @@ export function startLocal(reason) {
   if (raw) {
     try {
       const d = JSON.parse(raw);
-      for (const c of COLS) if (c !== 'photos' && d && d[c] && typeof d[c] === 'object') S[c] = d[c];
+      for (const c of COLS.concat(TIMELINE_COLS)) if (c !== 'photos' && d && d[c] && typeof d[c] === 'object') S[c] = d[c];
     } catch (e) { /* corrupted; start fresh */ }
   }
   for (const id in S.entries) S.entries[id] = normalizeEntry(S.entries[id]);
@@ -225,7 +232,7 @@ export function writeFailed(e, col) {
 }
 
 // --- db subscriptions ---
-export const SUB_COLS = ['dogs', 'behaviors', 'entries', 'events', 'photos', 'settings'];
+export const SUB_COLS = ['dogs', 'behaviors', 'entries', 'events', 'photos', 'settings'].concat(TIMELINE_COLS);
 export function startDb(db) {
   S.mode = 'db';
   DB = db;
@@ -251,14 +258,15 @@ export function subscribe(col, seen, attempt) {
         }
         existing.add(key);
         const d = clone(ch.doc.data());
-        if (col === 'entries') {
+        if (PATCH_COLS.indexOf(col) >= 0) {
           const ov = overlay.get(key);
-          const before = S.entries[id] ? JSON.stringify(S.entries[id]) : '';
-          S.entries[id] = ov ? deepMerge(d, clone(ov)) : d;
-          if (JSON.stringify(S.entries[id]) === before) continue;
-          if (!initial && S.ready && d.updatedBy && d.updatedBy !== S.me) noteRemoteChange(id, d.updatedBy);
+          const before = S[col][id] ? JSON.stringify(S[col][id]) : '';
+          S[col][id] = ov ? deepMerge(d, clone(ov)) : d;
+          if (JSON.stringify(S[col][id]) === before) continue;
+          const dayId = col === 'entries' ? id : entryId(d.dogId, d.date);
+          if (!initial && S.ready && d.updatedBy && d.updatedBy !== S.me) noteRemoteChange(dayId, d.updatedBy);
           const dog = curDog();
-          if (dog && id === entryId(dog.id, S.date)) todayTouched = true;
+          if (dog && dayId === entryId(dog.id, S.date)) todayTouched = true;
         } else {
           if (writers.has(key) || pendingEdits.has(key)) continue;
           S[col][id] = d; lastWritten.set(key, JSON.stringify(d));
@@ -269,7 +277,9 @@ export function subscribe(col, seen, attempt) {
         seen.add(col);
         if (seen.size === SUB_COLS.length && !S.ready) { S.ready = true; onReady(); return; }
       }
-      if (S.ready && touched) scheduleRender({ todayEntry: todayTouched, col: col });
+      // Timeline docs are day-scoped like entries: on Today they patch in place (Today's patch() redraws the
+      // timeline) instead of forcing a full rebuild, so an open sheet or a focused field is never disturbed.
+      if (S.ready && touched) scheduleRender({ todayEntry: todayTouched, col: TIMELINE_COLS.indexOf(col) >= 0 ? 'entries' : col });
     }, (err) => {
       const c = err && err.code;
       if (S.accessDenied) { if (!seen.has(col)) seen.add(col); return; }
