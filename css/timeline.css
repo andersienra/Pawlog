@@ -98,7 +98,7 @@ button.tl-card:active { background: var(--surface-2); }
 .tl-big { font-family: var(--font-display); font-weight: 800; font-size: 44px; line-height: 1; letter-spacing: -.02em; color: color-mix(in oklab, var(--c) 55%, var(--ink)); min-width: 1.2em; }
 .tl-word { font-size: 24px; color: color-mix(in oklab, var(--c) 55%, var(--ink)); }
 .tl-val.unset .tl-big, .tl-val.unset .tl-word { color: var(--ink-3); }
-.tl-clear { margin-left: auto; font-size: 15px; }
+.tl-clear { margin-left: auto; font-size: 15px; min-width: 44px; justify-content: center; }
 .tl-clear[hidden] { display: none; }
 .tl-val .blabels { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 600; color: var(--ink-3); margin-top: -2px; }
 .tl-val .blabels span:last-child { text-align: right; }
@@ -128,7 +128,9 @@ button.tl-card:active { background: var(--surface-2); }
 .tl-tf { flex: 1; min-width: 0; }
 .tl-tf input[type="time"] { min-height: 52px; font-size: 20px; font-weight: 800; display: block; width: 100%; min-width: 0; -webkit-appearance: none; appearance: none; }
 .tl-timerow .chip { min-height: 52px; padding: 0 20px; font-weight: 800; flex: none; }
-.tl-durrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tl-durrow { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.tl-durs.chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.tl-durs .chip { padding: 0 6px; justify-content: center; white-space: nowrap; }
 .tl-durin { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--ink-2); }
 .tl-durin input { width: 92px; min-height: 44px; }
 .tl-note-in { min-height: 76px !important; }

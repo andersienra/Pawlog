@@ -103,14 +103,21 @@ function quickHtml(dog) {
       '<button class="q-btn" data-action="tl-quick" data-bid="' + esc(b.id) + '" data-v="' + v + '" aria-label="' + esc(b.name) + ' ' + l.toLowerCase() + ', ' + v + ' of 10"><span>' + l + '</span><small class="num">' + v + '</small></button>').join('') + '</div></div>';
 }
 // Live update from S (remote change or own save) without rebuilding Today. Leaves an open sheet alone.
-export function patchTimeline(dog) {
+export function patchTimeline(dog, force) {
   dog = dog || curDog();
   const box = $('#timeline'); if (!box || !dog) return;
   const items = timelineFor(dog.id, S.date);
   const sig = sigOf(dog, items);
   if (box.dataset.sig !== sig) { box.innerHTML = listHtml(dog, items); box.dataset.sig = sig; }
   const q = $('#tlQuick');
-  if (q && !q.contains(document.activeElement)) { const want = quickHtml(dog); if (q.innerHTML !== want) q.innerHTML = want; }
+  if (q && (force || !q.contains(document.activeElement))) {
+    const want = quickHtml(dog);
+    if (q.innerHTML !== want) {
+      const f = q.contains(document.activeElement) ? document.activeElement.dataset.v : null;
+      q.innerHTML = want;
+      if (f) { const nb = q.querySelector('[data-v="' + f + '"]'); if (nb) nb.focus({ preventScroll: true }); }
+    }
+  }
   const c = $('#tlCount'); if (c) c.textContent = countText(items);
 }
 
@@ -371,7 +378,7 @@ registerActions({
     if (!Store.patch('moments', doc.id, doc, {}, 0)) return;
     refreshSaveState();
     if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) { /* ignore */ } }
-    patchTimeline(dog);
+    patchTimeline(dog, true);
     toast(b.name + ' ' + doc.value + ' at ' + fmtTime(doc.time) + '. Tap it to add a note.');
   },
   'tl-opt': (el) => {
