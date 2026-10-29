@@ -52,6 +52,22 @@ export function toast(msg, isErr) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), isErr ? 4200 : 2200);
 }
+// On-screen keyboard (iOS keeps the layout viewport and only shrinks the visual one): expose its height as
+// --kb on <html> so open sheets sit above it, with their pinned Save button in reach.
+function syncKeyboard() {
+  const vv = window.visualViewport; if (!vv) return;
+  const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  const v = kb > 80 ? kb + 'px' : '0px';
+  const r = document.documentElement;
+  if (r.style.getPropertyValue('--kb') === v) return;
+  r.style.setProperty('--kb', v);
+  const a = document.activeElement;
+  if (kb > 80 && a && a.closest && a.closest('.sheet')) requestAnimationFrame(() => a.scrollIntoView({ block: 'nearest' }));
+}
+if (typeof window !== 'undefined' && window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncKeyboard);
+  window.visualViewport.addEventListener('scroll', syncKeyboard);
+}
 export let sheetOnClose = null;
 export function openSheet(title, body, onMount, onClose) {
   const root = $('#sheetRoot');

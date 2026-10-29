@@ -17,6 +17,8 @@ const NOUN = { moment: 'moment', activity: 'activity', training: 'training sessi
 const DUR_CHIPS = [10, 20, 30, 60];
 const QUICK = [['Low', 3], ['Medium', 6], ['High', 9]];
 const icon = (k) => ACTIVITY_ICONS[k] || ACTIVITY_ICONS.other;
+// 45 -> '45 min', 90 -> '1 h 30 min', 420 -> '7 h'
+const fmtDur = (n) => (n < 60 ? n + ' min' : Math.floor(n / 60) + ' h' + (n % 60 ? ' ' + (n % 60) + ' min' : ''));
 
 /* ---------------- Section on Today ---------------- */
 export function timelineSectionHtml(dog) {
@@ -61,7 +63,7 @@ function itemHtml(dog, x) {
   } else if (x.kind === 'activity') {
     const m = activityMeta(d.type);
     ic = '<span class="tl-ic">' + icon(m.icon) + '</span>';
-    title = '<span class="tl-name">' + esc(m.label) + '</span>' + (d.durationMin ? '<span class="tl-dur num">' + esc(d.durationMin) + ' min</span>' : '');
+    title = '<span class="tl-name">' + esc(m.label) + '</span>' + (d.durationMin ? '<span class="tl-dur num">' + esc(fmtDur(d.durationMin)) + '</span>' : '');
     label = m.label + (d.durationMin ? ', ' + d.durationMin + ' minutes' : '');
   } else {
     const ds = sessionDrills(d);
@@ -69,7 +71,7 @@ function itemHtml(dog, x) {
     title = '<span class="tl-name">' + esc(d.focus || 'Training') + '</span>';
     const bits = [];
     if (ds.length) bits.push(plural(ds.length, 'drill'));
-    if (d.durationMin) bits.push(d.durationMin + ' min');
+    if (d.durationMin) bits.push(fmtDur(d.durationMin));
     if (bits.length) title += '<span class="tl-dur num">' + esc(bits.join(' · ')) + '</span>';
     const cnt = { 3: 0, 2: 0, 1: 0 };
     ds.forEach(([, v]) => { if (cnt[v.result] != null) cnt[v.result]++; });

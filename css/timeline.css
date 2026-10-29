@@ -44,11 +44,11 @@ body.ro .tl-add, body.ro .tl-quick { display: none !important; }
 .tl-item { position: relative; --c: var(--ink-3); }
 /* Dashed "thread" between items, running through the icon column. */
 .tl-item + .tl-item::before {
-  content: ""; position: absolute; top: -12px; height: 14px; left: calc(12px + 62px + 10px + 17px);
+  content: ""; position: absolute; top: -12px; height: 14px; left: calc(12px + 74px + 10px + 17px);
   border-left: 2.5px dashed var(--ink-3); opacity: .7;
 }
 .tl-card {
-  width: 100%; display: grid; grid-template-columns: 62px 36px minmax(0, 1fr); gap: 10px; align-items: start;
+  width: 100%; display: grid; grid-template-columns: 74px 36px minmax(0, 1fr); gap: 10px; align-items: start;
   padding: 10px 12px; min-height: 58px; text-align: left; color: var(--ink);
   background: var(--surface); border: var(--bw) solid var(--border); border-radius: var(--r-md);
 }
@@ -127,6 +127,8 @@ button.tl-card:active { background: var(--surface-2); }
 .tl-timerow { display: flex; align-items: flex-end; gap: 10px; }
 .tl-tf { flex: 1; min-width: 0; }
 .tl-tf input[type="time"] { min-height: 52px; font-size: 20px; font-weight: 800; display: block; width: 100%; min-width: 0; -webkit-appearance: none; appearance: none; }
+/* iOS centers the native time value and can collapse an empty one; keep it left-aligned and full height. */
+.tl-tf input[type="time"]::-webkit-date-and-time-value { text-align: left; min-height: 1.2em; }
 .tl-timerow .chip { min-height: 52px; padding: 0 20px; font-weight: 800; flex: none; }
 .tl-durrow { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
 .tl-durs.chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
@@ -141,6 +143,8 @@ button.tl-card:active { background: var(--surface-2); }
   margin: 0 calc(-1 * var(--gut-r)) 0 calc(-1 * var(--gut-l)); padding: 10px var(--gut-r) calc(12px + env(safe-area-inset-bottom, 0px)) var(--gut-l);
   background: linear-gradient(to bottom, color-mix(in oklab, var(--bg) 0%, transparent), var(--bg) 14px);
 }
+/* Focused fields scroll clear of the pinned Save (e.g. when the keyboard opens). */
+.tl-form .input { scroll-margin: 12px 0 96px; }
 .tl-sheet-by { margin: -6px 0 0; text-align: center; font-size: 13px; color: var(--ink-3); }
 
 /* Training: drills in the session */

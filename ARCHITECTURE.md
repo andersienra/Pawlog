@@ -19,6 +19,7 @@ css/
                       swatches), top bar, banner, toast, tabs, sheets, dialogs, lightbox, onboarding/sign-in,
                       people/byline, read-only (body.ro) rules, reduced motion
   today.css           Today screen (date bar, summary ring, reminders, behavior sliders, details, photo grid)
+  timeline.css        "Through the day" timeline on Today + moment / activity / training sheets
   history.css         History (search, calendar heatmap, entry rows)
   insights.css        Insights (tiles, charts, trends, dots, weekday chips, tag bars)
   dog.css             Dog profile (hero, age, kv, events, gallery) + health-record sheet type chips
@@ -36,11 +37,14 @@ js/
                       sign-in screen, access-denied screen, sign-out; registers 'auth' form + auth actions
   ui.js               theme, toast, sheets, confirmDialog, copyText, render core (scheduleRender, deferral
                       while typing/dragging), render()/router (go, hash), tabs, bannerHtml, lightbox
+  analytics.js        pure functions (no DOM, no imports) behind the Insights through-the-day / what-changes-it /
+                      training cards; unit-tested in Node
   io.js               JSON/CSV export, import, text-export fallback; jsonPick change handler
   actions.js          document-level dispatch: click -> actions, submit -> forms, #filePick -> picks
   screens/
     onboarding.js     no-dog welcome + dog form, add/edit dog sheets, dog switcher, dog CRUD actions
     today.js          Today render + patchToday (live in-place update), editEntry, slider/notes/details input
+    timeline.js       not a screen: Today's "Through the day" section (timelineSectionHtml, patchTimeline) and its sheets
     history.js        History render, search input, month navigation
     insights.js       Insights render, SVG charts + hover, weekday chip scroller
     dog.js            Dog profile render, health-record sheet + form, avatar photo pick

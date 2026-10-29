@@ -132,6 +132,7 @@ svg { display: block; }
   /* Clears the floating tab bar (+ 32px breathing room) so nothing hides behind it. */
   padding-block: 0 calc(var(--tabbar-space) + 32px);
   min-height: 100vh;
+  min-height: 100dvh;
 }
 #app.no-tabs { padding-block-end: calc(40px + env(safe-area-inset-bottom, 0px)); }
 
@@ -420,6 +421,8 @@ textarea.input { resize: none; min-height: 110px; line-height: 1.45; }
 /* ---------- Sheets / dialogs ---------- */
 .layer { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
 .layer[hidden] { display: none !important; }
+/* Sheets ride above the on-screen keyboard (--kb is set from visualViewport in ui.js). */
+#sheetRoot { bottom: var(--kb, 0px); }
 .layer .scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; transition: opacity .25s; }
 .layer.open .scrim { opacity: 1; }
 .sheet {
@@ -494,9 +497,10 @@ body.ro #notes, body.ro #walk, body.ro #weight { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+/* Narrow phones (375): the active tab's icon would push "Insights" into an ellipsis. */
+@media (max-width: 389px) { .tab[aria-current="page"] svg { display: none; } }
 @media (max-width: 359px) {
   .tab { font-size: 13px; }
-  .tab[aria-current="page"] svg { display: none; }
   .welcome h1 { font-size: 34px; }
 }
 @media (min-width: 600px) {
